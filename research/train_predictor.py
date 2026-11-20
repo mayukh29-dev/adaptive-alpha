@@ -52,7 +52,7 @@ def metrics(frame, model):
     date_ics = []
     for _, g in result.groupby("signal_date"):
         if len(g) > 8 and g["prediction"].nunique() > 1 and g["actual"].nunique() > 1:
-            date_ics.append(g["prediction"].corr(g["actual"], method="spearman"))
+            date_ics.append(g["prediction"].rank(method="average").corr(g["actual"].rank(method="average"), method="pearson"))
     base_mae = float(np.mean(abs(actual)))  # Zero excess return as benchmark
     return {
         "observations": int(len(actual)),
