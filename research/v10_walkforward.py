@@ -113,11 +113,17 @@ def simulate_model(name, dates, panel, prices, sectors, min_training_months=24, 
         if not np.isfinite(current_close["SPY"]) or not np.isfinite(next_close["SPY"]):continue
         peers=[]
         for ticker in stocks:
-            if not all(np.isfinite(x) and x>0 for x in (current_close[ticker],future21[ticker],next_close[ticker])):
+            # Determine eligibility using features available at the signal date,
+            # NEVER by checking whether the stock has a future return.
+            if not np.isfinite(current_close[ticker]) or current_close[ticker]<=0:
                 continue
             vals={f:panel[f].at[when,ticker] for f in set(sum(MODELS.values(),[])+list(BASELINES.values()))}
             if not all(np.isfinite(v) for v in vals.values()):
                 continue
+            if not all(np.isfinite(x) and x>0 for x in (future21[ticker],next_close[ticker],future21["SPY"])):
+                raise ValueError(
+                    f"{ticker} on {when.date()}: eligible at signal date but missing subsequent price. "
+                    "Do not silently remove this stock using future data; audit delisting/corporate actions.")
             peers.append({"ticker":ticker,"sector":sectors[ticker],
                           "features":vals,
                           "actual_21":float(future21[ticker]/current_close[ticker]-future21["SPY"]/current_close["SPY"]),
@@ -190,7 +196,9 @@ def simulate_model(name, dates, panel, prices, sectors, min_training_months=24, 
             "turnover":turnover,"equity":equity,"spy_equity":prev_spy_equity,
             "holdings":";".join(q["ticker"] for q in chosen),
         })
-    return pd.DataFrame(results)
+    frame=pd.DataFrame(results)
+    frame.attrs["cost_bps"]=cost_bps
+    return frame
 
 def summary(d):
     if d.empty:return {"months":0}
@@ -212,7 +220,7 @@ def summary(d):
         "positive_ic_month_share":round(float((ics>0).mean()),4) if len(ics) else None,
         "mean_top_bottom_21d_spread_pp":round(float(d.top_bottom_spread.mean()*100),3),
         "total_turnover":round(float(d.turnover.sum()),3),
-        "cost_bps":10,
+        "cost_bps":float(d.attrs.get("cost_bps",10)),
     }
 
 def main():
@@ -271,6 +279,8 @@ def main():
         "model_features":MODELS,
         "outlier_count":len(alerts),
         "outlier_status":"UNREVIEWED" if alerts else "NO_THRESHOLD_BREACHES",
+        "cost_bps":args.cost_bps,
+        "alpha":args.alpha,
         "results":outputs,
         "limitations":[
           "Retrospectively selected universe and retrospective sector membership",
