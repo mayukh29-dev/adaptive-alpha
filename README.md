@@ -32,3 +32,32 @@ The Research Agent uses Yahoo Finance vendor snapshots. Its free mode answers on
 ## Development
 
 The beta originated in a separate branch of the Insight Agent project and has been copied to this dedicated repository.
+
+## Unified signals and predictive research (new development track)
+
+The public dashboard now uses `signals.py` as the **single scoring source** for live Momentum, Recovery and Hybrid. Historical V8.2 results visible under Strategy Benchmarks are **legacy** and NOT comparable to `signals.py` until the unified backtest is run.
+
+- `signals.py`: versioned, fully historical-data-only signal calculations.
+- `prediction.py`: linear ridge model inference and research classification.
+- `research/backtest_shared_v1.py`: matching unified v1.0 backtest.
+- `research/train_predictor.py`: fixed chronological train/validation/heldout evaluation for 21-trading-day **excess return relative to SPY**.
+- `tests/test_unified_signals.py`: unit tests for live/backtest consistency and look-ahead safety.
+
+### Run training locally (your history files are not on GitHub)
+
+In PowerShell, from `$HOME\Downloads\adaptive_alpha_v8_2`:
+
+```powershell
+$root = "https://raw.githubusercontent.com/mayukh29-dev/adaptive-alpha/main"
+Invoke-WebRequest "$root/signals.py" -OutFile ".\signals.py"
+Invoke-WebRequest "$root/prediction.py" -OutFile ".\prediction.py"
+Invoke-WebRequest "$root/research/train_predictor.py" -OutFile ".\train_predictor.py"
+Invoke-WebRequest "$root/research/backtest_shared_v1.py" -OutFile ".\backtest_shared_v1.py"
+
+python .\train_predictor.py --exclude-tickers NWE CHRD NCMI
+python .\backtest_shared_v1.py --exclude-tickers NWE CHRD NCMI
+```
+
+The backtest intentionally stops on unreviewed price moves. Do not suppress data audit errors just to obtain performance claims. The training outputs `predictive_output/evaluation.json` and `predictive_output/predictive_model.json`. The Streamlit app requires the latter at `models/predictive_model.json` to display predictions; without it, no Buy/Hold/Sell labels will be produced. Only publish after inspecting results, data quality and the holdout report.
+
+The model trains on labels ending by 2020, validates on 2021–2022, and tests on 2023 onward, with 21-trading-session label maturity at split edges. It never uses future labels to form training features, but the retrospective universe bias remains. A passing descriptive research gate is not a significance test or a trading recommendation. **Do not describe forecasts as reliable until independent out-of-sample testing and price integrity checks succeed.**
