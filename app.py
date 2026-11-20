@@ -136,9 +136,9 @@ if page=="Overview":
 
 elif page=="Strategy Explorer":
     st.title("Strategy Explorer")
-    st.caption("Switch between historical-proxy strategies and an illustrative risk-screen preview.")
+    st.caption("Explore Momentum, Recovery and Hybrid using an illustrative recent-price signal snapshot.")
     st.warning("These are single-stock current-snapshot calculations, NOT validated historical strategy returns or production Adaptive Alpha scores.")
-    style=st.radio("View strategy",["Momentum","Hybrid","Conservative (risk-screen preview)"],horizontal=True)
+    style=st.radio("View strategy",["Momentum","Recovery","Hybrid"],horizontal=True)
     ticker_explorer=st.text_input("Stock ticker",value="NVDA",key="explorer_ticker",max_chars=12).strip().upper()
     if not re.fullmatch(r"[A-Z][A-Z0-9.\\-]{0,11}",ticker_explorer):
         st.error("Enter a ticker such as NVDA or MSFT.")
@@ -168,23 +168,15 @@ elif page=="Strategy Explorer":
                     st.progress(min(100,max(0,int(round(signal["hybrid"]))))/100)
                     st.write("This explorer uses the historical pilot's 60% Momentum / 40% Recovery blend. Recovery is approximated from the trailing 126-day low and proximity to the high; it is not a replay of production V7.")
                 else:
-                    st.subheader("Conservative · Risk-screen preview")
-                    st.info("The historical project files do not establish a separately validated Conservative scoring formula. This preview applies user-selected risk guardrails to the same current-stock data and makes no historical performance claim.")
-                    max_vol=st.slider("Maximum annualized 63-day volatility (%)",10,100,35,5,key="max_vol")
-                    max_dd=st.slider("Maximum 126-day peak-to-trough drawdown (%)",5,80,25,5,key="max_dd")
-                    min_mom=st.slider("Minimum Momentum proxy score",0,100,40,5,key="min_mom")
+                    st.subheader("Recovery · Rebound and price stabilization")
                     a,b,c=st.columns(3)
-                    a.metric("Annualized 63-day volatility",f"{signal['volatility_63']:.1f}%" if signal["volatility_63"] is not None else "N/A")
-                    b.metric("126-day max drawdown",f"{signal['drawdown_126']:.1f}%")
-                    c.metric("Momentum",f"{signal['momentum']:.1f}")
-                    meets=(signal["volatility_63"] is not None and signal["volatility_63"]<=max_vol
-                           and abs(signal["drawdown_126"])<=max_dd and signal["momentum"]>=min_mom)
-                    if meets:
-                        st.success("Passes the selected illustrative risk-screen guardrails. This is NOT a buy recommendation.")
-                    else:
-                        st.warning("Does not pass the selected illustrative risk-screen guardrails.")
-                    st.caption("These thresholds are user-adjustable prototype controls, not the original Adaptive Alpha Conservative strategy.")
-                st.markdown("**Research note:** To compare actual strategy performance, we must run separate point-in-time backtests for Momentum, Hybrid, and a formally specified Conservative strategy.")
+                    a.metric("Recovery proxy score",f"{signal['recovery']:.1f} / 100")
+                    b.metric("126-day maximum drawdown",f"{signal['drawdown_126']:.1f}%")
+                    c.metric("126-day current close",f"{signal['close']:.2f}")
+                    st.progress(min(100,max(0,int(round(signal["recovery"]))))/100)
+                    st.write("This illustrative Recovery proxy combines a rebound from the trailing 126-session low (60%) and proximity to the trailing 126-session high (40%). A recovery signal does not establish business quality or a favorable investment outcome.")
+                    st.caption("This is an exploratory price-only approximation; it is not the certified production V7 Recovery calculation.")
+                st.markdown("**Research note:** To compare actual strategy performance, we must run separate point-in-time backtests for Momentum, Recovery, and Hybrid.")
         except Exception:
             st.error("Could not fetch or process sufficient vendor market data. Please retry later.")
 \nelif page=="Strategy benchmarks":
