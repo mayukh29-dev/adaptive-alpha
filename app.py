@@ -6,6 +6,9 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 
+import signals as signal_engine
+import prediction as prediction_engine
+
 st.set_page_config(page_title="Adaptive Alpha | Research Terminal", page_icon="📈", layout="wide")
 st.markdown("""<style>
 .stApp{background:#0a1220;color:#e9eff9}
@@ -22,7 +25,7 @@ RANDOM={"simulations":1000,"beaten":73.1,"median_cagr":15.3015,"p05_cagr":10.609
         "equal_stock_cagr":31.723,"equal_stock_vol":77.64,"equal_sector_cagr":31.578,"equal_sector_vol":75.637}
 CAVEAT = "Historical price-only proxy on a later-selected 109-stock universe, not a production Adaptive Alpha V7 signal replay. Survivorship/selection bias, possible price-data anomalies, and execution limitations remain. Not investment advice."
 st.sidebar.markdown("## ◈ ADAPTIVE ALPHA")
-page=st.sidebar.radio("Navigation",["Overview","Live Market","Strategy Explorer","Strategy benchmarks","Stock research agent","Methodology"])
+page=st.sidebar.radio("Navigation",["Overview","Live Market","Strategy Explorer","Predictive Watchlist","Strategy benchmarks","Stock research agent","Methodology"])
 st.sidebar.caption("BETA • Historical data through 2026-11-13")
 st.sidebar.warning("Research prototype. Historical returns have not passed the final price audit.")
 
@@ -95,29 +98,56 @@ def ai_answer(question,s,key):
 
 
 def compute_strategy_signals(history, spy_history=None):
-    """Exploratory current-date signals; not the historical backtest engine."""
-    if history.empty or "Close" not in history or len(history) < 127:
+    """Exactly the shared v1.0 score implementation used by the new trainer."""
+    return signal_engine.latest_scores(history)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def prediction_artifact():
+    try:
+        return prediction_engine.load_artifact()
+    except Exception:
         return None
-    p = pd.to_numeric(history["Close"], errors="coerce").dropna()
-    if len(p) < 127 or (p <= 0).any():
-        return None
-    current = float(p.iloc[-1])
-    r63 = current / float(p.iloc[-64]) - 1
-    momentum = max(0.0, min(100.0, 50.0 + 50.0 * r63 / 0.25))
-    window = p.iloc[-126:]
-    low, high = float(window.min()), float(window.max())
-    rebound = 100.0 * (current - low) / low if low > 0 else 0.0
-    rebound_score = max(0.0, min(100.0, rebound))
-    proximity = 100.0 * current / high if high > 0 else 0.0
-    proximity_score = max(0.0, min(100.0, proximity))
-    recovery = 0.6 * rebound_score + 0.4 * proximity_score
-    daily = p.pct_change(fill_method=None).dropna()
-    vol = float(daily.iloc[-63:].std() * (252 ** 0.5) * 100) if len(daily) >= 63 else None
-    peak = p.iloc[-126:].cummax()
-    drawdown = float(((p.iloc[-126:] / peak) - 1).min() * 100)
-    return {"momentum":momentum,"recovery":recovery,"hybrid":0.6*momentum+0.4*recovery,
-            "return_63":r63*100,"volatility_63":vol,"drawdown_126":drawdown,
-            "date":str(p.index[-1].date()),"close":current}
+
+
+def predictive_readout(scores, style):
+    """Returns a readout only if model exists and research holdout gate passed."""
+    artifact=prediction_artifact()
+    key=style.lower()
+    if not artifact:
+        return None, "Prediction unavailable: run the time-separated trainer and publish its evaluated artifact."
+    if artifact.get("signal_version") != signal_engine.SIGNAL_VERSION:
+        return None, "Prediction unavailable: model and live signals have different versions."
+    strategy=artifact.get("strategies",{}).get(key)
+    if not strategy:
+        return None, "No trained model for this strategy."
+    if not strategy.get("research_gate_passed",False):
+        return None, "Prediction withheld: this strategy did not meet its predefined holdout research checks."
+    try:
+        vector=prediction_engine.features(scores["momentum"],scores["recovery"],key)
+        excess=float(prediction_engine.predict_model(strategy["model"],vector)[0])
+        if not pd.notna(excess):
+            return None, "Prediction unavailable because model output is invalid."
+        return {"expected_excess":excess, "label":prediction_engine.research_signal(excess),
+                "test":strategy.get("heldout_test",{})}, None
+    except Exception:
+        return None, "Prediction unavailable: model inference failed."
+
+
+def show_prediction(scores, style):
+    result,reason=predictive_readout(scores,style)
+    st.subheader("21-trading-session predictive research")
+    if result is None:
+        st.info(reason)
+        st.caption("This dashboard will not invent a forecast or Buy/Hold/Sell rating before passing held-out testing.")
+        return
+    st.metric("Forecast excess return vs SPY",f"{result['expected_excess']*100:+.2f} percentage points")
+    st.markdown("**Research classification: "+result["label"]+"**")
+    test=result["test"]
+    st.caption("Model based on historical adjusted daily prices. Held-out mean monthly rank IC: "
+               +str(test.get("mean_rank_ic","N/A"))
+               +"; excess-return MAE: "+str(test.get("mae_excess_return_pp","N/A"))
+               +" percentage points. No probability, guarantee, or personalized recommendation is implied.")
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -175,6 +205,8 @@ def market_live_panel(symbol, period, interval):
                 r_col.metric("Recovery",f"{signals['recovery']:.1f} / 100")
                 h_col.metric("Hybrid",f"{signals['hybrid']:.1f} / 100")
                 st.caption(f"Signal data through {signals['date']} (daily adjusted close). Momentum: 63-session return proxy; Recovery: 126-session rebound/high proximity proxy; Hybrid: 60% Momentum + 40% Recovery.")
+                selected_model=st.selectbox("Forecast strategy",["Momentum","Recovery","Hybrid"],index=2,key="live_predictive_style")
+                show_prediction(signals,selected_model)
         except Exception:
             st.info("Strategy signals temporarily unavailable from the daily-price provider. The intraday price chart remains available.")
 
@@ -258,9 +290,52 @@ elif page=="Strategy Explorer":
                     st.progress(min(100,max(0,int(round(signal["recovery"]))))/100)
                     st.write("This illustrative Recovery proxy combines a rebound from the trailing 126-session low (60%) and proximity to the trailing 126-session high (40%). A recovery signal does not establish business quality or a favorable investment outcome.")
                     st.caption("This is an exploratory price-only approximation; it is not the certified production V7 Recovery calculation.")
+                show_prediction(signal,style)
                 st.markdown("**Research note:** To compare actual strategy performance, we must run separate point-in-time backtests for Momentum, Recovery, and Hybrid.")
         except Exception:
             st.error("Could not fetch or process sufficient vendor market data. Please retry later.")
+
+
+elif page=="Predictive Watchlist":
+    st.title("Predictive Watchlist")
+    st.caption("Rank a user-defined stock watchlist using consistent Momentum, Recovery and Hybrid signals. This is not a full-market screen.")
+    watch_raw=st.text_input("Tickers, separated by commas (up to 8)",value="NVDA,MSFT,AAPL,AMZN,GOOGL,META",key="watchlist_tickers")
+    selected_style=st.radio("Ranking approach",["Momentum","Recovery","Hybrid"],horizontal=True,key="watchlist_style")
+    tickers=list(dict.fromkeys(x.strip().upper() for x in watch_raw.split(",") if x.strip()))
+    if len(tickers)>8:
+        st.warning("Limit the watchlist to 8 stocks to avoid market data provider rate limits.")
+    elif any(not re.fullmatch(r"[A-Z][A-Z0-9.\\-]{0,11}",t) for t in tickers):
+        st.warning("One or more ticker symbols are invalid.")
+    elif st.button("Analyze watchlist",type="primary"):
+        rows=[]
+        with st.spinner("Retrieving recent daily closes and calculating shared strategy scores..."):
+            for t in tickers:
+                try:
+                    history=recent_daily_signal_history(t)
+                    scores=compute_strategy_signals(history)
+                    if scores is None:
+                        rows.append({"Ticker":t,"Status":"Insufficient data"})
+                        continue
+                    prediction,reason=predictive_readout(scores,selected_style)
+                    rows.append({
+                        "Ticker":t,
+                        "Status":"Evaluated" if prediction else "Score only",
+                        "Momentum":round(scores["momentum"],1),
+                        "Recovery":round(scores["recovery"],1),
+                        "Hybrid":round(scores["hybrid"],1),
+                        "Forecast excess vs SPY (%)":round(prediction["expected_excess"]*100,2) if prediction else None,
+                        "Research label":prediction["label"] if prediction else "Not validated",
+                        "As of":scores["date"],
+                    })
+                except Exception:
+                    rows.append({"Ticker":t,"Status":"Market data unavailable"})
+        table=pd.DataFrame(rows)
+        sort_key="Forecast excess vs SPY (%)" if "Forecast excess vs SPY (%)" in table and table["Forecast excess vs SPY (%)"].notna().any() else selected_style
+        if sort_key in table.columns:
+            table=table.sort_values(sort_key,ascending=False,na_position="last")
+        st.dataframe(table,use_container_width=True,hide_index=True)
+        st.caption("Watchlist ranks are relative to tickers entered, not sector ranks. Signals are descriptive until evaluated predictive artifacts are available. Buy/Hold/Sell research labels are withheld when model validation fails.")
+        st.download_button("Download watchlist research",table.to_csv(index=False).encode("utf-8"),file_name="adaptive_alpha_watchlist.csv",mime="text/csv")
 
 elif page=="Strategy benchmarks":
     st.title("Strategy benchmarks")
