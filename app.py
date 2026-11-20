@@ -120,6 +120,13 @@ def compute_strategy_signals(history, spy_history=None):
             "date":str(p.index[-1].date()),"close":current}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def recent_daily_signal_history(symbol):
+    # Daily adjusted close: use the same signal input as Strategy Explorer.
+    # This is distinct from the intraday quote and may lag during the session.
+    return yf.Ticker(symbol).history(period="2y", interval="1d", auto_adjust=True)
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def market_intraday(symbol, period, interval):
     stock=yf.Ticker(symbol)
@@ -155,6 +162,22 @@ def market_live_panel(symbol, period, interval):
         else:
             c.metric("Last bar volume","N/A")
         st.caption(f"Latest recorded market bar: {stamp}. Data retrieved via Yahoo Finance/yfinance; quote delay and market session vary. Not a consolidated real-time feed.")
+        st.subheader("Adaptive Alpha strategy reads")
+        st.caption("Scores are calculated from recent adjusted DAILY closes. Refreshed from the vendor cache every 5 minutes, not tick-by-tick. These are exploratory 0–100 price-only proxy signals, not the full production V7 models.")
+        try:
+            signal_history=recent_daily_signal_history(symbol)
+            signals=compute_strategy_signals(signal_history)
+            if signals is None:
+                st.info("Momentum, Recovery and Hybrid scores require at least 127 valid daily closes. No score is shown when history is insufficient.")
+            else:
+                m_col,r_col,h_col=st.columns(3)
+                m_col.metric("Momentum",f"{signals['momentum']:.1f} / 100")
+                r_col.metric("Recovery",f"{signals['recovery']:.1f} / 100")
+                h_col.metric("Hybrid",f"{signals['hybrid']:.1f} / 100")
+                st.caption(f"Signal data through {signals['date']} (daily adjusted close). Momentum: 63-session return proxy; Recovery: 126-session rebound/high proximity proxy; Hybrid: 60% Momentum + 40% Recovery.")
+        except Exception:
+            st.info("Strategy signals temporarily unavailable from the daily-price provider. The intraday price chart remains available.")
+
         st.line_chart(close.rename("Price"),height=290)
         if "Volume" in data.columns:
             st.bar_chart(pd.to_numeric(data["Volume"],errors="coerce").rename("Volume"),height=140)
