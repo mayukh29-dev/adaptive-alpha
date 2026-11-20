@@ -192,7 +192,8 @@ elif page=="Live Market":
         p,i=settings[preset]
         market_live_panel(symbol,p,i)
     st.info("Important: This is a refreshed vendor feed, not guaranteed real-time exchange-licensed data. Prices and volume may arrive late, especially outside regular US market hours.")
-\nelif page=="Strategy Explorer":
+
+elif page=="Strategy Explorer":
     st.title("Strategy Explorer")
     st.caption("Explore Momentum, Recovery and Hybrid using an illustrative recent-price signal snapshot.")
     st.warning("These are single-stock current-snapshot calculations, NOT validated historical strategy returns or production Adaptive Alpha scores.")
@@ -237,7 +238,8 @@ elif page=="Live Market":
                 st.markdown("**Research note:** To compare actual strategy performance, we must run separate point-in-time backtests for Momentum, Recovery, and Hybrid.")
         except Exception:
             st.error("Could not fetch or process sufficient vendor market data. Please retry later.")
-\nelif page=="Strategy benchmarks":
+
+elif page=="Strategy benchmarks":
     st.title("Strategy benchmarks")
     st.caption("1,000 seeded randomized selections, same historical universe and dates")
     a,b,c=st.columns(3)
