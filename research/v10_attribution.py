@@ -44,7 +44,7 @@ def main():
     tickers=sorted(set(
         t for value in chosen["holdings"].fillna("") for t in str(value).split(";") if t
     ))
-    prices=bt.load_prices(args.history,tickers)
+    prices=bt.load_prices(args.history,["SPY"]+tickers)
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
     rows=[]
     monthly_reconciliations=[]
