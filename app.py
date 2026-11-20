@@ -22,7 +22,7 @@ RANDOM={"simulations":1000,"beaten":73.1,"median_cagr":15.3015,"p05_cagr":10.609
         "equal_stock_cagr":31.723,"equal_stock_vol":77.64,"equal_sector_cagr":31.578,"equal_sector_vol":75.637}
 CAVEAT = "Historical price-only proxy on a later-selected 109-stock universe, not a production Adaptive Alpha V7 signal replay. Survivorship/selection bias, possible price-data anomalies, and execution limitations remain. Not investment advice."
 st.sidebar.markdown("## ◈ ADAPTIVE ALPHA")
-page=st.sidebar.radio("Navigation",["Overview","Strategy Explorer","Strategy benchmarks","Stock research agent","Methodology"])
+page=st.sidebar.radio("Navigation",["Overview","Live Market","Strategy Explorer","Strategy benchmarks","Stock research agent","Methodology"])
 st.sidebar.caption("BETA • Historical data through 2026-11-13")
 st.sidebar.warning("Research prototype. Historical returns have not passed the final price audit.")
 
@@ -119,6 +119,50 @@ def compute_strategy_signals(history, spy_history=None):
             "return_63":r63*100,"volatility_63":vol,"drawdown_126":drawdown,
             "date":str(p.index[-1].date()),"close":current}
 
+
+@st.cache_data(ttl=60, show_spinner=False)
+def market_intraday(symbol, period, interval):
+    stock=yf.Ticker(symbol)
+    return stock.history(period=period,interval=interval,auto_adjust=False,prepost=False)
+
+@st.fragment(run_every="60s")
+def market_live_panel(symbol, period, interval):
+    st.caption("This panel checks for updated vendor quotes approximately every 60 seconds while open. Exchange quotes may be delayed; updates are not guaranteed.")
+    try:
+        data=market_intraday(symbol,period,interval)
+        if data is None or data.empty or "Close" not in data:
+            st.warning("No recent vendor prices available. Check the ticker or retry later.")
+            return
+        close=pd.to_numeric(data["Close"],errors="coerce").dropna()
+        if close.empty:
+            st.warning("Latest quote is unavailable.")
+            return
+        latest=float(close.iloc[-1])
+        prior=float(close.iloc[-2]) if len(close)>1 else None
+        change=(latest/prior-1)*100 if prior and prior>0 else None
+        stamp=data.index[-1]
+        currency=""
+        try:
+            currency=str(yf.Ticker(symbol).fast_info.get("currency") or "")
+        except Exception:
+            pass
+        a,b,c=st.columns(3)
+        a.metric(f"{symbol} last recorded price",f"{latest:,.2f} {currency}")
+        b.metric("Change vs prior chart bar",f"{change:+.2f}%" if change is not None else "N/A")
+        if "Volume" in data.columns:
+            volume=pd.to_numeric(data["Volume"],errors="coerce")
+            c.metric("Last bar volume",f"{int(volume.iloc[-1]):,}" if pd.notna(volume.iloc[-1]) else "N/A")
+        else:
+            c.metric("Last bar volume","N/A")
+        st.caption(f"Latest recorded market bar: {stamp}. Data retrieved via Yahoo Finance/yfinance; quote delay and market session vary. Not a consolidated real-time feed.")
+        st.line_chart(close.rename("Price"),height=290)
+        if "Volume" in data.columns:
+            st.bar_chart(pd.to_numeric(data["Volume"],errors="coerce").rename("Volume"),height=140)
+        if len(close)>1:
+            st.download_button("Export displayed prices",data.to_csv().encode("utf-8"),file_name=f"{symbol}_market_data.csv",mime="text/csv")
+    except Exception:
+        st.warning("Quote service temporarily unavailable. The rest of the dashboard remains usable.")
+
 if page=="Overview":
     st.title("Adaptive Alpha")
     st.caption("QUANTITATIVE MARKET INTELLIGENCE • INTERACTIVE BETA")
@@ -134,7 +178,21 @@ if page=="Overview":
     st.dataframe(pd.DataFrame(RESULTS).T,use_container_width=True)
     st.warning("The return figures are from a retrospectively selected universe. They do not validate live trading or the production quality-scoring model.")
 
-elif page=="Strategy Explorer":
+
+elif page=="Live Market":
+    st.title("Live Market")
+    st.caption("Auto-updating vendor market data · for research and demonstration, not live order execution.")
+    symbol=st.text_input("Search stock or ETF ticker",value="NVDA",max_chars=12,key="live_symbol").strip().upper()
+    preset=st.selectbox("Chart range",["1 day (5 min bars)","5 days (15 min bars)","1 month (daily)","3 months (daily)"],key="live_range")
+    settings={"1 day (5 min bars)":("1d","5m"),"5 days (15 min bars)":("5d","15m"),
+              "1 month (daily)":("1mo","1d"),"3 months (daily)":("3mo","1d")}
+    if not re.fullmatch(r"[A-Z][A-Z0-9.\\-]{0,11}",symbol):
+        st.warning("Enter a valid ticker such as AAPL, SPY or NVDA.")
+    else:
+        p,i=settings[preset]
+        market_live_panel(symbol,p,i)
+    st.info("Important: This is a refreshed vendor feed, not guaranteed real-time exchange-licensed data. Prices and volume may arrive late, especially outside regular US market hours.")
+\nelif page=="Strategy Explorer":
     st.title("Strategy Explorer")
     st.caption("Explore Momentum, Recovery and Hybrid using an illustrative recent-price signal snapshot.")
     st.warning("These are single-stock current-snapshot calculations, NOT validated historical strategy returns or production Adaptive Alpha scores.")
