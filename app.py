@@ -22,7 +22,7 @@ RANDOM={"simulations":1000,"beaten":73.1,"median_cagr":15.3015,"p05_cagr":10.609
         "equal_stock_cagr":31.723,"equal_stock_vol":77.64,"equal_sector_cagr":31.578,"equal_sector_vol":75.637}
 CAVEAT = "Historical price-only proxy on a later-selected 109-stock universe, not a production Adaptive Alpha V7 signal replay. Survivorship/selection bias, possible price-data anomalies, and execution limitations remain. Not investment advice."
 st.sidebar.markdown("## ◈ ADAPTIVE ALPHA")
-page=st.sidebar.radio("Navigation",["Overview","Strategy benchmarks","Stock research agent","Methodology"])
+page=st.sidebar.radio("Navigation",["Overview","Strategy Explorer","Strategy benchmarks","Stock research agent","Methodology"])
 st.sidebar.caption("BETA • Historical data through 2026-11-13")
 st.sidebar.warning("Research prototype. Historical returns have not passed the final price audit.")
 
@@ -93,6 +93,32 @@ def ai_answer(question,s,key):
     )
     return response.output_text
 
+
+def compute_strategy_signals(history, spy_history=None):
+    """Exploratory current-date signals; not the historical backtest engine."""
+    if history.empty or "Close" not in history or len(history) < 127:
+        return None
+    p = pd.to_numeric(history["Close"], errors="coerce").dropna()
+    if len(p) < 127 or (p <= 0).any():
+        return None
+    current = float(p.iloc[-1])
+    r63 = current / float(p.iloc[-64]) - 1
+    momentum = max(0.0, min(100.0, 50.0 + 50.0 * r63 / 0.25))
+    window = p.iloc[-126:]
+    low, high = float(window.min()), float(window.max())
+    rebound = 100.0 * (current - low) / low if low > 0 else 0.0
+    rebound_score = max(0.0, min(100.0, rebound))
+    proximity = 100.0 * current / high if high > 0 else 0.0
+    proximity_score = max(0.0, min(100.0, proximity))
+    recovery = 0.6 * rebound_score + 0.4 * proximity_score
+    daily = p.pct_change(fill_method=None).dropna()
+    vol = float(daily.iloc[-63:].std() * (252 ** 0.5) * 100) if len(daily) >= 63 else None
+    peak = p.iloc[-126:].cummax()
+    drawdown = float(((p.iloc[-126:] / peak) - 1).min() * 100)
+    return {"momentum":momentum,"recovery":recovery,"hybrid":0.6*momentum+0.4*recovery,
+            "return_63":r63*100,"volatility_63":vol,"drawdown_126":drawdown,
+            "date":str(p.index[-1].date()),"close":current}
+
 if page=="Overview":
     st.title("Adaptive Alpha")
     st.caption("QUANTITATIVE MARKET INTELLIGENCE • INTERACTIVE BETA")
@@ -107,7 +133,61 @@ if page=="Overview":
     st.subheader("Portfolio performance summary")
     st.dataframe(pd.DataFrame(RESULTS).T,use_container_width=True)
     st.warning("The return figures are from a retrospectively selected universe. They do not validate live trading or the production quality-scoring model.")
-elif page=="Strategy benchmarks":
+
+elif page=="Strategy Explorer":
+    st.title("Strategy Explorer")
+    st.caption("Switch between historical-proxy strategies and an illustrative risk-screen preview.")
+    st.warning("These are single-stock current-snapshot calculations, NOT validated historical strategy returns or production Adaptive Alpha scores.")
+    style=st.radio("View strategy",["Momentum","Hybrid","Conservative (risk-screen preview)"],horizontal=True)
+    ticker_explorer=st.text_input("Stock ticker",value="NVDA",key="explorer_ticker",max_chars=12).strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9.\\-]{0,11}",ticker_explorer):
+        st.error("Enter a ticker such as NVDA or MSFT.")
+    else:
+        try:
+            # Require at least 126 trading sessions plus a prior close.
+            ex_history=yf.Ticker(ticker_explorer).history(period="2y",auto_adjust=True)
+            signal=compute_strategy_signals(ex_history)
+            if signal is None:
+                st.info("Not enough valid market history for this signal (127+ valid daily closes required).")
+            else:
+                st.caption(f"Vendor adjusted-close series · as of {signal['date']} · not a point-in-time certified dataset")
+                st.line_chart(ex_history["Close"].tail(126),height=240)
+                if style=="Momentum":
+                    st.subheader("Momentum · 63-trading-session price strength")
+                    a,b=st.columns(2)
+                    a.metric("Momentum proxy score",f"{signal['momentum']:.1f} / 100")
+                    b.metric("63-session price return",f"{signal['return_63']:+.2f}%")
+                    st.write("Price-only research proxy: 63-session return mapped to 0–100 using ±25% bounds, clipped to the score range.")
+                    st.info("Momentum is a directional technical signal. It does not capture company quality, valuation, liquidity or financial risk.")
+                elif style=="Hybrid":
+                    st.subheader("Hybrid · Momentum + Recovery")
+                    a,b,c=st.columns(3)
+                    a.metric("Hybrid proxy",f"{signal['hybrid']:.1f} / 100")
+                    b.metric("Momentum",f"{signal['momentum']:.1f}")
+                    c.metric("Recovery",f"{signal['recovery']:.1f}")
+                    st.progress(min(100,max(0,int(round(signal["hybrid"]))))/100)
+                    st.write("This explorer uses the historical pilot's 60% Momentum / 40% Recovery blend. Recovery is approximated from the trailing 126-day low and proximity to the high; it is not a replay of production V7.")
+                else:
+                    st.subheader("Conservative · Risk-screen preview")
+                    st.info("The historical project files do not establish a separately validated Conservative scoring formula. This preview applies user-selected risk guardrails to the same current-stock data and makes no historical performance claim.")
+                    max_vol=st.slider("Maximum annualized 63-day volatility (%)",10,100,35,5,key="max_vol")
+                    max_dd=st.slider("Maximum 126-day peak-to-trough drawdown (%)",5,80,25,5,key="max_dd")
+                    min_mom=st.slider("Minimum Momentum proxy score",0,100,40,5,key="min_mom")
+                    a,b,c=st.columns(3)
+                    a.metric("Annualized 63-day volatility",f"{signal['volatility_63']:.1f}%" if signal["volatility_63"] is not None else "N/A")
+                    b.metric("126-day max drawdown",f"{signal['drawdown_126']:.1f}%")
+                    c.metric("Momentum",f"{signal['momentum']:.1f}")
+                    meets=(signal["volatility_63"] is not None and signal["volatility_63"]<=max_vol
+                           and abs(signal["drawdown_126"])<=max_dd and signal["momentum"]>=min_mom)
+                    if meets:
+                        st.success("Passes the selected illustrative risk-screen guardrails. This is NOT a buy recommendation.")
+                    else:
+                        st.warning("Does not pass the selected illustrative risk-screen guardrails.")
+                    st.caption("These thresholds are user-adjustable prototype controls, not the original Adaptive Alpha Conservative strategy.")
+                st.markdown("**Research note:** To compare actual strategy performance, we must run separate point-in-time backtests for Momentum, Hybrid, and a formally specified Conservative strategy.")
+        except Exception:
+            st.error("Could not fetch or process sufficient vendor market data. Please retry later.")
+\nelif page=="Strategy benchmarks":
     st.title("Strategy benchmarks")
     st.caption("1,000 seeded randomized selections, same historical universe and dates")
     a,b,c=st.columns(3)
