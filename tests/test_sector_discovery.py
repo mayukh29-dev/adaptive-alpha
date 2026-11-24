@@ -51,6 +51,42 @@ class SectorDiscoveryTests(unittest.TestCase):
         self.assertEqual(leaders.loc[leaders.Sector=="Financials","Leader"].iloc[0],"CCC")
         self.assertEqual(leaders.loc[leaders.Sector=="Energy","Leader"].iloc[0],"Unavailable")
 
+    def test_sector_scorecard_averages_and_slider(self):
+        sample = {
+            "Information Technology": [
+                {"ticker":"AAA","momentum":100,"recovery":20,"date":"2026-11-24"},
+                {"ticker":"BBB","momentum":40,"recovery":80,"date":"2026-11-24"},
+            ],
+            "Energy": [
+                {"ticker":"CCC","momentum":60,"recovery":60,"date":"2026-11-24"}
+            ]
+        }
+        tables_60=sector_discovery.all_sector_tables(sample,60,"Custom Hybrid")
+        tables_20=sector_discovery.all_sector_tables(sample,20,"Custom Hybrid")
+        card_60=sector_discovery.sector_scorecard(tables_60,"Custom Hybrid")
+        card_20=sector_discovery.sector_scorecard(tables_20,"Custom Hybrid")
+        first=card_60.set_index("Sector").loc["Information Technology"]
+        changed=card_20.set_index("Sector").loc["Information Technology"]
+        self.assertEqual(first["Scored"],2)
+        self.assertEqual(first["Coverage"],6)
+        self.assertAlmostEqual(first["Avg Momentum"],70)
+        self.assertAlmostEqual(first["Avg Recovery"],50)
+        self.assertAlmostEqual(first["Avg Standard Hybrid"],62)
+        self.assertAlmostEqual(first["Avg Custom Hybrid"],62)
+        self.assertAlmostEqual(changed["Avg Custom Hybrid"],54)
+        self.assertAlmostEqual(changed["Avg Standard Hybrid"],62)
+        self.assertEqual(card_60.set_index("Sector").loc["Financials","Scored"],0)
+        self.assertTrue(card_60.set_index("Sector").loc["Financials","Avg Momentum"] !=
+                        card_60.set_index("Sector").loc["Financials","Avg Momentum"])
+
+    def test_scorecard_sort_and_invalid_rank_method(self):
+        sample={"Energy":[{"ticker":"CCC","momentum":90,"recovery":90,"date":"2026-11-24"}]}
+        tables=sector_discovery.all_sector_tables(sample,60,"Momentum")
+        card=sector_discovery.sector_scorecard(tables,"Momentum")
+        self.assertEqual(card.iloc[0]["Sector"],"Energy")
+        with self.assertRaises(ValueError):
+            sector_discovery.sector_scorecard(tables,"Forecast")
+
     def test_empty_and_invalid_options(self):
         self.assertTrue(sector_discovery.rank_sector([],60,"Momentum").empty)
         with self.assertRaises(ValueError):
