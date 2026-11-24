@@ -7,6 +7,7 @@ import streamlit as st
 import yfinance as yf
 
 import signals as signal_engine
+import comparison as comparison_engine
 import prediction as prediction_engine
 
 st.set_page_config(page_title="Adaptive Alpha | Research Terminal", page_icon="📈", layout="wide")
@@ -295,6 +296,62 @@ if page=="Stock Scores":
 """)
             with st.expander("Recent adjusted closing prices"):
                 st.line_chart(history["Close"].dropna().tail(126),height=240)
+    st.divider()
+    st.subheader("Compare stocks")
+    st.caption("Enter two or three tickers to compare their technical scores using the same Hybrid weights shown above.")
+    with st.form("compare_stock_form"):
+        compare_raw=st.text_input("Tickers (comma separated)",value="NVDA, AMD, MSFT",
+                                  help="Enter 2 or 3 distinct symbols, for example NVDA, AMD, MSFT.")
+        compare_clicked=st.form_submit_button("Compare stocks",type="primary")
+    if compare_clicked:
+        try:
+            symbols=comparison_engine.parse_comparison_tickers(compare_raw)
+        except ValueError as exc:
+            st.session_state.pop("compared_stocks",None)
+            st.warning(str(exc))
+        else:
+            compared=[]
+            problems=[]
+            with st.spinner("Calculating comparable stock scores..."):
+                for ticker in symbols:
+                    try:
+                        history=recent_daily_signal_history(ticker)
+                        observed=compute_strategy_signals(history)
+                        if observed is None:
+                            problems.append(f"{ticker}: insufficient daily price history")
+                        else:
+                            compared.append({"ticker":ticker,
+                                             "momentum":observed["momentum"],
+                                             "recovery":observed["recovery"],
+                                             "date":observed["date"]})
+                    except Exception:
+                        problems.append(f"{ticker}: market data unavailable")
+            st.session_state["compared_stocks"]=compared
+            st.session_state["comparison_errors"]=problems
+    for problem in st.session_state.get("comparison_errors",[]):
+        st.warning(problem)
+    compared=st.session_state.get("compared_stocks",[])
+    if len(compared)>=2:
+        weight=st.session_state.get("simple_hybrid_pct",60)
+        result=comparison_engine.build_comparison(compared,weight)
+        dates={stock["date"] for stock in compared}
+        if len(dates)>1:
+            st.warning("Stocks have different latest price dates. Compare cautiously because signals are not as of the same market session.")
+        st.caption(f"Ranked by Custom Hybrid · {weight}% Momentum / {100-weight}% Recovery · larger score ranks first")
+        cards=st.columns(len(result))
+        for col,(_,stock) in zip(cards,result.iterrows()):
+            with col:
+                st.metric(f"#{int(stock['Rank'])}  {stock['Ticker']}",
+                          f"{stock['Custom Hybrid']:.1f} / 100")
+                st.caption(f"Momentum {stock['Momentum']:.1f} · Recovery {stock['Recovery']:.1f}")
+        st.dataframe(result,hide_index=True,use_container_width=True)
+        st.caption("Ranking compares only the entered stocks; it is not a predicted-return ranking or an investment recommendation.")
+        st.download_button("Download comparison CSV",
+                           result.to_csv(index=False).encode("utf-8"),
+                           file_name="adaptive_alpha_comparison.csv",mime="text/csv")
+    elif compared:
+        st.info("At least two stocks need valid prices to display a comparison.")
+
     st.caption("Adaptive Alpha · Research beta · Not investment advice. Advanced tools are in the sidebar.")
 
 elif page=="Overview":
