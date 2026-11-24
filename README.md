@@ -8,6 +8,12 @@ The app opens by default to a single-stock research screen. Enter a ticker to se
 
 The homepage now includes **historical score trends** (1, 3, 6, or 12 calendar months) from the same daily adjusted close signals used in the current score cards. Changing the user Hybrid weight updates its entire historical custom-score line, while the baseline 60/40 line stays fixed. Users can download chart data as CSV. A score chart is not a return backtest and cannot validate customized strategy performance.\n\nThe homepage also supports **side-by-side comparison of 2–3 stocks**. Enter comma-separated tickers, click **Compare stocks**, and see each stock's Momentum, Recovery, original 60/40 Hybrid, and user-weighted Hybrid scores. The same custom-weight slider reranks comparisons without refetching market data; results can be exported as CSV. Market scores for each ticker show the adjusted-close date, and differing dates are flagged. Comparison ranks are descriptive, not predicted returns.
 
+### Curated sector discovery
+
+Choose among **11 curated sectors** on the simplified homepage, then click **Scan selected sector** to score **six representative US-listed stocks** in that sector using the same adjusted daily close calculations as the main stock page. Rank by Momentum, Recovery, Standard Hybrid, or the current Custom Hybrid slider weighting. Results can be exported as CSV. The scanner shows data dates, records failed symbols, and explicitly warns when the stocks' latest adjusted-close dates differ.
+
+**Coverage is not exhaustive**; sector assignments are manually curated and illustrative, rather than independently verified or point-in-time GICS membership. This is not a complete US-market screen, and the highest score is not a prediction or investment recommendation. Scores are cached by the app and vendor; rerun the scan to refresh the snapshot.
+
 ### Session watchlists
 
 Visitors can save up to **12 tickers per Streamlit browser session** on the home page. Use **Save to watchlist** to add the selected ticker, **View** to switch the analysis ticker, **Remove** to delete it, and **Refresh watchlist scores** to fetch recent adjusted-close scores for saved tickers. The table ranks the saved symbols by the current custom Hybrid mix and supports CSV export. This is session memory only: no login, persistent storage, cross-device sync, or price alerts. Watchlist scores are refreshed only on request; moving the weight slider recomputes the blend without downloading quotes.
