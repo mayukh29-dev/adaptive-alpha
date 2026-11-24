@@ -9,6 +9,7 @@ import yfinance as yf
 import signals as signal_engine
 import comparison as comparison_engine
 import score_history as score_history_engine
+import watchlist as watchlist_engine
 import prediction as prediction_engine
 
 st.set_page_config(page_title="Adaptive Alpha | Research Terminal", page_icon="📈", layout="wide")
@@ -379,6 +380,83 @@ if page=="Stock Scores":
                            file_name="adaptive_alpha_comparison.csv",mime="text/csv")
     elif compared:
         st.info("At least two stocks need valid prices to display a comparison.")
+
+    st.divider()
+    st.subheader("My watchlist")
+    st.caption("Save up to 12 stock symbols for this browser session. No account or permanent storage.")
+    if "simple_watchlist" not in st.session_state:
+        st.session_state.simple_watchlist=[]
+    if "watchlist_snapshots" not in st.session_state:
+        st.session_state.watchlist_snapshots={}
+    current_ticker=st.session_state.get("simple_current_ticker","NVDA")
+    if re.fullmatch(r"[A-Z][A-Z0-9.-]{0,11}",current_ticker):
+        if st.button(f"Save {current_ticker} to watchlist",key="watchlist_add_current"):
+            try:
+                st.session_state.simple_watchlist=watchlist_engine.add_ticker(
+                    st.session_state.simple_watchlist,current_ticker)
+            except ValueError as exc:
+                st.warning(str(exc))
+    if st.session_state.simple_watchlist:
+        st.caption(f"{len(st.session_state.simple_watchlist)} / {watchlist_engine.MAX_WATCHLIST} saved")
+        for saved_ticker in list(st.session_state.simple_watchlist):
+            label_col,open_col,remove_col=st.columns([4,1,1],vertical_alignment="center")
+            label_col.write(f"**{saved_ticker}**")
+            if open_col.button("View",key=f"watch_view_{saved_ticker}",use_container_width=True):
+                st.session_state.simple_current_ticker=saved_ticker
+                st.rerun()
+            if remove_col.button("Remove",key=f"watch_remove_{saved_ticker}",use_container_width=True):
+                st.session_state.simple_watchlist=watchlist_engine.remove_ticker(
+                    st.session_state.simple_watchlist,saved_ticker)
+                st.session_state.watchlist_snapshots.pop(saved_ticker,None)
+                st.rerun()
+        if st.button("Refresh watchlist scores",type="primary"):
+            snapshots={}
+            errors=[]
+            with st.spinner("Checking saved stocks with the market-data provider..."):
+                for t in st.session_state.simple_watchlist:
+                    try:
+                        h=recent_daily_signal_history(t)
+                        z=compute_strategy_signals(h)
+                        if z is None:
+                            errors.append(f"{t}: not enough valid daily closes")
+                        else:
+                            snapshots[t]={"ticker":t,"momentum":z["momentum"],
+                                          "recovery":z["recovery"],"date":z["date"]}
+                    except Exception:
+                        errors.append(f"{t}: vendor market data unavailable")
+            st.session_state.watchlist_snapshots=snapshots
+            st.session_state.watchlist_errors=errors
+        for problem in st.session_state.get("watchlist_errors",[]):
+            st.warning(problem)
+        saved_rows=[st.session_state.watchlist_snapshots[t]
+                    for t in st.session_state.simple_watchlist
+                    if t in st.session_state.watchlist_snapshots]
+        if saved_rows:
+            weight=st.session_state.get("simple_hybrid_pct",60)
+            frame=[]
+            for record in saved_rows:
+                m=float(record["momentum"])
+                r=float(record["recovery"])
+                frame.append({
+                    "Ticker":record["ticker"],
+                    "Momentum":round(m,1),
+                    "Recovery":round(r,1),
+                    "Standard Hybrid":round(signal_engine.weighted_hybrid(m,r,0.6),1),
+                    "Custom Hybrid":round(signal_engine.weighted_hybrid(m,r,weight/100),1),
+                    "As of":record["date"],
+                })
+            watch_df=pd.DataFrame(frame).sort_values(
+                ["Custom Hybrid","Ticker"],ascending=[False,True]).reset_index(drop=True)
+            st.dataframe(watch_df,hide_index=True,use_container_width=True)
+            st.caption(f"Custom Hybrid uses the current {weight}% Momentum / {100-weight}% Recovery weights. "
+                       "Saved scores update only when you click Refresh; changing the slider changes the blend, not prices.")
+            st.download_button("Download watchlist CSV",data=watch_df.to_csv(index=False).encode("utf-8"),
+                               file_name="adaptive_alpha_session_watchlist.csv",mime="text/csv")
+        else:
+            st.info("Click Refresh watchlist scores to load the latest available technical readings.")
+    else:
+        st.info("No stocks saved yet. Analyze a ticker above and choose Save to watchlist.")
+    st.caption("Watchlists remain in Streamlit session memory only; they may disappear after refresh, disconnect, or app restart. No cross-device sync.")
 
     st.caption("Adaptive Alpha · Research beta · Not investment advice. Advanced tools are in the sidebar.")
 
