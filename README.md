@@ -6,6 +6,8 @@ A Streamlit research dashboard demonstrating a **price-only historical proxy** o
 
 The app opens by default to a single-stock research screen. Enter a ticker to see the current 0–100 Momentum, Recovery and standard Hybrid scores. The standard Hybrid remains fixed at 60% Momentum / 40% Recovery. Visitors can change a separate **custom Hybrid** with a 0–100% Momentum slider; the Recovery weight is automatically 100% minus Momentum, and a reset button restores 60/40. These custom weights do **not** change the historical research models, imply a validated return forecast, or authorize Buy/Hold/Sell ratings.
 
+The homepage also supports **side-by-side comparison of 2–3 stocks**. Enter comma-separated tickers, click **Compare stocks**, and see each stock's Momentum, Recovery, original 60/40 Hybrid, and user-weighted Hybrid scores. The same custom-weight slider reranks comparisons without refetching market data; results can be exported as CSV. Market scores for each ticker show the adjusted-close date, and differing dates are flagged. Comparison ranks are descriptive, not predicted returns.
+
 Use the sidebar **Advanced research** toggle for the original historical views, market data, watchlists and company research tools. Daily adjusted signals require 127 valid closes.
 
 ## Features
