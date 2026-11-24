@@ -8,6 +8,7 @@ import yfinance as yf
 
 import signals as signal_engine
 import comparison as comparison_engine
+import score_history as score_history_engine
 import prediction as prediction_engine
 
 st.set_page_config(page_title="Adaptive Alpha | Research Terminal", page_icon="📈", layout="wide")
@@ -294,6 +295,33 @@ if page=="Stock Scores":
 
 **What scores do not mean:** A score of 80 is not an 80% chance the stock will rise. Scores do not include business fundamentals, fair value, or complete investment risks.
 """)
+            st.divider()
+            st.subheader("How have the scores changed?")
+            st.caption("Daily historical technical scores from past adjusted closes. This is a score history, not a historical investment-return chart.")
+            months_label=st.segmented_control(
+                "Score history range",options=["1 month","3 months","6 months","12 months"],
+                default="3 months",key="simple_history_range")
+            months_count={"1 month":1,"3 months":3,"6 months":6,"12 months":12}
+            history_scores=score_history_engine.score_history(
+                history,momentum_pct=w,months=months_count[months_label or "3 months"])
+            if history_scores.empty:
+                st.info("Not enough usable historical daily prices to plot scores over this range.")
+            else:
+                st.line_chart(history_scores,y=["Momentum","Recovery","Standard Hybrid","Custom Hybrid"],
+                              height=290,y_label="Technical score (0–100)")
+                current=history_scores.iloc[-1]
+                first=history_scores.iloc[0]
+                st.caption(
+                    f"Custom Hybrid: {first['Custom Hybrid']:.1f} → {current['Custom Hybrid']:.1f} "
+                    f"({current['Custom Hybrid']-first['Custom Hybrid']:+.1f} score points across the displayed observations). "
+                    "Changing the slider recomputes only the custom blend.")
+                st.download_button(
+                    "Download score history CSV",
+                    history_scores.rename_axis("Date").to_csv().encode("utf-8"),
+                    file_name=f"{symbol}_score_history_{months_count[months_label or '3 months']}m.csv",
+                    mime="text/csv")
+            st.caption("A rising score indicates stronger recent technical readings, not a guaranteed future return.")
+
             with st.expander("Recent adjusted closing prices"):
                 st.line_chart(history["Close"].dropna().tail(126),height=240)
     st.divider()
