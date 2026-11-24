@@ -229,8 +229,8 @@ def market_live_panel(symbol, period, interval):
 
 if page=="Stock Scores":
     st.title("Adaptive Alpha")
-    st.caption("Understand a stock in three scores. Customize the blend that matters to you.")
-    st.info("Technical research scores from adjusted daily closing prices — not probabilities, price targets, or Buy/Sell recommendations.")
+    st.caption("Three clear scores. One adjustable strategy. Research your stocks without the clutter.")
+    st.caption("Price-only technical readings, not probabilities or Buy/Sell recommendations. Historical research is under Advanced research in the sidebar.")
 
     with st.form("simple_ticker_search", border=False):
         left,right=st.columns([4,1],vertical_alignment="bottom")
@@ -298,228 +298,230 @@ if page=="Stock Scores":
 
 **What scores do not mean:** A score of 80 is not an 80% chance the stock will rise. Scores do not include business fundamentals, fair value, or complete investment risks.
 """)
-            st.divider()
-            st.subheader("How have the scores changed?")
-            st.caption("Daily historical technical scores from past adjusted closes. This is a score history, not a historical investment-return chart.")
-            months_label=st.segmented_control(
-                "Score history range",options=["1 month","3 months","6 months","12 months"],
-                default="3 months",key="simple_history_range")
-            months_count={"1 month":1,"3 months":3,"6 months":6,"12 months":12}
-            history_scores=score_history_engine.score_history(
-                history,momentum_pct=w,months=months_count[months_label or "3 months"])
-            if history_scores.empty:
-                st.info("Not enough usable historical daily prices to plot scores over this range.")
-            else:
-                st.line_chart(history_scores,y=["Momentum","Recovery","Standard Hybrid","Custom Hybrid"],
-                              height=290,y_label="Technical score (0–100)")
-                current=history_scores.iloc[-1]
-                first=history_scores.iloc[0]
-                st.caption(
-                    f"Custom Hybrid: {first['Custom Hybrid']:.1f} → {current['Custom Hybrid']:.1f} "
-                    f"({current['Custom Hybrid']-first['Custom Hybrid']:+.1f} score points across the displayed observations). "
-                    "Changing the slider recomputes only the custom blend.")
-                st.download_button(
-                    "Download score history CSV",
-                    history_scores.rename_axis("Date").to_csv().encode("utf-8"),
-                    file_name=f"{symbol}_score_history_{months_count[months_label or '3 months']}m.csv",
-                    mime="text/csv")
-            st.caption("A rising score indicates stronger recent technical readings, not a guaranteed future return.")
+            with st.expander("Score history and price chart",expanded=False):
+                st.caption("Explore how Momentum, Recovery, and Hybrid readings changed over time.")
+                st.caption("Daily historical technical scores from past adjusted closes. This is a score history, not a historical investment-return chart.")
+                months_label=st.segmented_control(
+                    "Score history range",options=["1 month","3 months","6 months","12 months"],
+                    default="3 months",key="simple_history_range")
+                months_count={"1 month":1,"3 months":3,"6 months":6,"12 months":12}
+                history_scores=score_history_engine.score_history(
+                    history,momentum_pct=w,months=months_count[months_label or "3 months"])
+                if history_scores.empty:
+                    st.info("Not enough usable historical daily prices to plot scores over this range.")
+                else:
+                    st.line_chart(history_scores,y=["Momentum","Recovery","Standard Hybrid","Custom Hybrid"],
+                                  height=290,y_label="Technical score (0–100)")
+                    current=history_scores.iloc[-1]
+                    first=history_scores.iloc[0]
+                    st.caption(
+                        f"Custom Hybrid: {first['Custom Hybrid']:.1f} → {current['Custom Hybrid']:.1f} "
+                        f"({current['Custom Hybrid']-first['Custom Hybrid']:+.1f} score points across the displayed observations). "
+                        "Changing the slider recomputes only the custom blend.")
+                    st.download_button(
+                        "Download score history CSV",
+                        history_scores.rename_axis("Date").to_csv().encode("utf-8"),
+                        file_name=f"{symbol}_score_history_{months_count[months_label or '3 months']}m.csv",
+                        mime="text/csv")
+                st.caption("A rising score indicates stronger recent technical readings, not a guaranteed future return.")
 
-            with st.expander("Recent adjusted closing prices"):
+                st.caption("Recent adjusted closing prices")
                 st.line_chart(history["Close"].dropna().tail(126),height=240)
     st.divider()
-    st.subheader("Compare stocks")
-    st.caption("Enter two or three tickers to compare their technical scores using the same Hybrid weights shown above.")
-    with st.form("compare_stock_form"):
-        compare_raw=st.text_input("Tickers (comma separated)",value="NVDA, AMD, MSFT",
-                                  help="Enter 2 or 3 distinct symbols, for example NVDA, AMD, MSFT.")
-        compare_clicked=st.form_submit_button("Compare stocks",type="primary")
-    if compare_clicked:
-        try:
-            symbols=comparison_engine.parse_comparison_tickers(compare_raw)
-        except ValueError as exc:
-            st.session_state.pop("compared_stocks",None)
-            st.warning(str(exc))
-        else:
-            compared=[]
-            problems=[]
-            with st.spinner("Calculating comparable stock scores..."):
-                for ticker in symbols:
-                    try:
-                        history=recent_daily_signal_history(ticker)
-                        observed=compute_strategy_signals(history)
-                        if observed is None:
-                            problems.append(f"{ticker}: insufficient daily price history")
-                        else:
-                            compared.append({"ticker":ticker,
-                                             "momentum":observed["momentum"],
-                                             "recovery":observed["recovery"],
-                                             "date":observed["date"]})
-                    except Exception:
-                        problems.append(f"{ticker}: market data unavailable")
-            st.session_state["compared_stocks"]=compared
-            st.session_state["comparison_errors"]=problems
-    for problem in st.session_state.get("comparison_errors",[]):
-        st.warning(problem)
-    compared=st.session_state.get("compared_stocks",[])
-    if len(compared)>=2:
-        weight=st.session_state.get("simple_hybrid_pct",60)
-        result=comparison_engine.build_comparison(compared,weight)
-        dates={stock["date"] for stock in compared}
-        if len(dates)>1:
-            st.warning("Stocks have different latest price dates. Compare cautiously because signals are not as of the same market session.")
-        st.caption(f"Ranked by Custom Hybrid · {weight}% Momentum / {100-weight}% Recovery · larger score ranks first")
-        cards=st.columns(len(result))
-        for col,(_,stock) in zip(cards,result.iterrows()):
-            with col:
-                st.metric(f"#{int(stock['Rank'])}  {stock['Ticker']}",
-                          f"{stock['Custom Hybrid']:.1f} / 100")
-                st.caption(f"Momentum {stock['Momentum']:.1f} · Recovery {stock['Recovery']:.1f}")
-        st.dataframe(result,hide_index=True,use_container_width=True)
-        st.caption("Ranking compares only the entered stocks; it is not a predicted-return ranking or an investment recommendation.")
-        st.download_button("Download comparison CSV",
-                           result.to_csv(index=False).encode("utf-8"),
-                           file_name="adaptive_alpha_comparison.csv",mime="text/csv")
-    elif compared:
-        st.info("At least two stocks need valid prices to display a comparison.")
-
-    st.divider()
-    st.subheader("Discover stocks by sector")
-    st.caption("Explore a small, curated sample of US-listed stocks in each sector. This is not a complete market scan or a verified current sector-membership database.")
-    sector_options=list(sector_discovery_engine.SECTOR_UNIVERSE)
-    sector_choice=st.selectbox("Choose a sector",sector_options,key="discovery_sector")
-    rank_choice=st.selectbox("Rank by",list(sector_discovery_engine.SORT_CHOICES),
-                              key="discovery_rank",help="Custom Hybrid uses the Momentum/Recovery slider above.")
-    representatives=sector_discovery_engine.SECTOR_UNIVERSE[sector_choice]
-    st.caption("Representative tickers: "+", ".join(representatives))
-    st.caption("Stock coverage is fixed and deliberately limited to six representatives per sector to control data requests.")
-    if st.button("Scan selected sector",type="primary",key="discovery_scan"):
-        scanned=[]
-        failed=[]
-        with st.spinner(f"Scoring available stocks in {sector_choice}..."):
-            for discovery_ticker in representatives:
-                try:
-                    observed=compute_strategy_signals(recent_daily_signal_history(discovery_ticker))
-                    if observed is None:
-                        failed.append(f"{discovery_ticker}: insufficient adjusted daily price history")
-                    else:
-                        scanned.append({"ticker":discovery_ticker,
-                                        "momentum":observed["momentum"],
-                                        "recovery":observed["recovery"],
-                                        "date":observed["date"]})
-                except Exception:
-                    failed.append(f"{discovery_ticker}: quote data unavailable")
-        st.session_state["sector_discovery_snapshot"]={
-            "sector":sector_choice,"rows":scanned,"errors":failed,
-            "scanned_at":datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        }
-    snapshot=st.session_state.get("sector_discovery_snapshot",{})
-    if snapshot.get("sector")==sector_choice:
-        st.caption(f"Scan requested: {snapshot.get('scanned_at','unknown time')} · "
-                   "Scores use the latest daily adjusted-close date shown for each stock.")
-        for failure in snapshot.get("errors",[]):
-            st.warning(failure)
-        all_rows=snapshot.get("rows",[])
-        if all_rows:
-            discovery_weight=st.session_state.get("simple_hybrid_pct",60)
-            discovery_table=sector_discovery_engine.rank_sector(
-                all_rows,discovery_weight,rank_choice)
-            dates={row["date"] for row in all_rows}
-            if len(dates)>1:
-                st.warning("Some stocks have different latest data dates; these rankings are not fully synchronized.")
-            st.caption(f"Showing {len(all_rows)} of {len(representatives)} curated representatives · "
-                       f"Custom Hybrid = {discovery_weight}% Momentum / {100-discovery_weight}% Recovery")
-            st.dataframe(discovery_table,hide_index=True,use_container_width=True)
-            best_ticker=discovery_table.iloc[0]["Ticker"]
-            st.caption(f"Highest {rank_choice} score in this scanned sample: {best_ticker}. "
-                       "This is NOT a claim that it is the best investment in the sector.")
-            st.download_button("Download sector scores CSV",
-                               data=discovery_table.to_csv(index=False).encode("utf-8"),
-                               file_name="adaptive_alpha_sector_scores.csv",mime="text/csv",
-                               key="discovery_export")
-        else:
-            st.info("No eligible stock scores were retrieved. Try scanning again.")
-    else:
-        st.info("Choose a sector and select Scan selected sector to load its scores.")
-    st.caption("Moving the Hybrid slider re-ranks cached results. Use Scan selected sector again to refresh vendor prices. "
-               "Sector assignments are illustrative and can change; no buy/sell forecast is implied.")
-
-    st.divider()
-    st.subheader("My watchlist")
-    st.caption("Save up to 12 stock symbols for this browser session. No account or permanent storage.")
-    if "simple_watchlist" not in st.session_state:
-        st.session_state.simple_watchlist=[]
-    if "watchlist_snapshots" not in st.session_state:
-        st.session_state.watchlist_snapshots={}
-    current_ticker=st.session_state.get("simple_current_ticker","NVDA")
-    if re.fullmatch(r"[A-Z][A-Z0-9.-]{0,11}",current_ticker):
-        if st.button(f"Save {current_ticker} to watchlist",key="watchlist_add_current"):
+    st.markdown("### Explore more")
+    st.caption("Choose one task at a time. The Momentum/Recovery slider above applies to every section.")
+    compare_tab,discover_tab,watch_tab=st.tabs(["Compare stocks","Discover by sector","My watchlist"])
+    with compare_tab:
+        st.subheader("Compare stocks")
+        st.caption("Enter two or three tickers to compare their technical scores using the same Hybrid weights shown above.")
+        with st.form("compare_stock_form"):
+            compare_raw=st.text_input("Tickers (comma separated)",value="NVDA, AMD, MSFT",
+                                      help="Enter 2 or 3 distinct symbols, for example NVDA, AMD, MSFT.")
+            compare_clicked=st.form_submit_button("Compare stocks",type="primary")
+        if compare_clicked:
             try:
-                st.session_state.simple_watchlist=watchlist_engine.add_ticker(
-                    st.session_state.simple_watchlist,current_ticker)
+                symbols=comparison_engine.parse_comparison_tickers(compare_raw)
             except ValueError as exc:
+                st.session_state.pop("compared_stocks",None)
                 st.warning(str(exc))
-    if st.session_state.simple_watchlist:
-        st.caption(f"{len(st.session_state.simple_watchlist)} / {watchlist_engine.MAX_WATCHLIST} saved")
-        for saved_ticker in list(st.session_state.simple_watchlist):
-            label_col,open_col,remove_col=st.columns([4,1,1],vertical_alignment="center")
-            label_col.write(f"**{saved_ticker}**")
-            open_col.button("View",key=f"watch_view_{saved_ticker}",use_container_width=True,
-                            on_click=lambda t=saved_ticker: st.session_state.update(
-                                simple_current_ticker=t,simple_ticker_input=t))
-            if remove_col.button("Remove",key=f"watch_remove_{saved_ticker}",use_container_width=True):
-                st.session_state.simple_watchlist=watchlist_engine.remove_ticker(
-                    st.session_state.simple_watchlist,saved_ticker)
-                st.session_state.watchlist_snapshots.pop(saved_ticker,None)
-                st.rerun()
-        if st.button("Refresh watchlist scores",type="primary"):
-            snapshots={}
-            errors=[]
-            with st.spinner("Checking saved stocks with the market-data provider..."):
-                for t in st.session_state.simple_watchlist:
-                    try:
-                        h=recent_daily_signal_history(t)
-                        z=compute_strategy_signals(h)
-                        if z is None:
-                            errors.append(f"{t}: not enough valid daily closes")
-                        else:
-                            snapshots[t]={"ticker":t,"momentum":z["momentum"],
-                                          "recovery":z["recovery"],"date":z["date"]}
-                    except Exception:
-                        errors.append(f"{t}: vendor market data unavailable")
-            st.session_state.watchlist_snapshots=snapshots
-            st.session_state.watchlist_errors=errors
-        for problem in st.session_state.get("watchlist_errors",[]):
+            else:
+                compared=[]
+                problems=[]
+                with st.spinner("Calculating comparable stock scores..."):
+                    for ticker in symbols:
+                        try:
+                            history=recent_daily_signal_history(ticker)
+                            observed=compute_strategy_signals(history)
+                            if observed is None:
+                                problems.append(f"{ticker}: insufficient daily price history")
+                            else:
+                                compared.append({"ticker":ticker,
+                                                 "momentum":observed["momentum"],
+                                                 "recovery":observed["recovery"],
+                                                 "date":observed["date"]})
+                        except Exception:
+                            problems.append(f"{ticker}: market data unavailable")
+                st.session_state["compared_stocks"]=compared
+                st.session_state["comparison_errors"]=problems
+        for problem in st.session_state.get("comparison_errors",[]):
             st.warning(problem)
-        saved_rows=[st.session_state.watchlist_snapshots[t]
-                    for t in st.session_state.simple_watchlist
-                    if t in st.session_state.watchlist_snapshots]
-        if saved_rows:
+        compared=st.session_state.get("compared_stocks",[])
+        if len(compared)>=2:
             weight=st.session_state.get("simple_hybrid_pct",60)
-            frame=[]
-            for record in saved_rows:
-                m=float(record["momentum"])
-                r=float(record["recovery"])
-                frame.append({
-                    "Ticker":record["ticker"],
-                    "Momentum":round(m,1),
-                    "Recovery":round(r,1),
-                    "Standard Hybrid":round(signal_engine.weighted_hybrid(m,r,0.6),1),
-                    "Custom Hybrid":round(signal_engine.weighted_hybrid(m,r,weight/100),1),
-                    "As of":record["date"],
-                })
-            watch_df=pd.DataFrame(frame).sort_values(
-                ["Custom Hybrid","Ticker"],ascending=[False,True]).reset_index(drop=True)
-            st.dataframe(watch_df,hide_index=True,use_container_width=True)
-            st.caption(f"Custom Hybrid uses the current {weight}% Momentum / {100-weight}% Recovery weights. "
-                       "Saved scores update only when you click Refresh; changing the slider changes the blend, not prices.")
-            st.download_button("Download watchlist CSV",data=watch_df.to_csv(index=False).encode("utf-8"),
-                               file_name="adaptive_alpha_session_watchlist.csv",mime="text/csv")
+            result=comparison_engine.build_comparison(compared,weight)
+            dates={stock["date"] for stock in compared}
+            if len(dates)>1:
+                st.warning("Stocks have different latest price dates. Compare cautiously because signals are not as of the same market session.")
+            st.caption(f"Ranked by Custom Hybrid · {weight}% Momentum / {100-weight}% Recovery · larger score ranks first")
+            cards=st.columns(len(result))
+            for col,(_,stock) in zip(cards,result.iterrows()):
+                with col:
+                    st.metric(f"#{int(stock['Rank'])}  {stock['Ticker']}",
+                              f"{stock['Custom Hybrid']:.1f} / 100")
+                    st.caption(f"Momentum {stock['Momentum']:.1f} · Recovery {stock['Recovery']:.1f}")
+            st.dataframe(result,hide_index=True,use_container_width=True)
+            st.caption("Ranking compares only the entered stocks; it is not a predicted-return ranking or an investment recommendation.")
+            st.download_button("Download comparison CSV",
+                               result.to_csv(index=False).encode("utf-8"),
+                               file_name="adaptive_alpha_comparison.csv",mime="text/csv")
+        elif compared:
+            st.info("At least two stocks need valid prices to display a comparison.")
+    with discover_tab:
+        st.subheader("Discover stocks by sector")
+        st.caption("Explore a small, curated sample of US-listed stocks in each sector. This is not a complete market scan or a verified current sector-membership database.")
+        sector_options=list(sector_discovery_engine.SECTOR_UNIVERSE)
+        sector_choice=st.selectbox("Choose a sector",sector_options,key="discovery_sector")
+        rank_choice=st.selectbox("Rank by",list(sector_discovery_engine.SORT_CHOICES),
+                                  key="discovery_rank",help="Custom Hybrid uses the Momentum/Recovery slider above.")
+        representatives=sector_discovery_engine.SECTOR_UNIVERSE[sector_choice]
+        st.caption("Representative tickers: "+", ".join(representatives))
+        st.caption("Stock coverage is fixed and deliberately limited to six representatives per sector to control data requests.")
+        if st.button("Scan selected sector",type="primary",key="discovery_scan"):
+            scanned=[]
+            failed=[]
+            with st.spinner(f"Scoring available stocks in {sector_choice}..."):
+                for discovery_ticker in representatives:
+                    try:
+                        observed=compute_strategy_signals(recent_daily_signal_history(discovery_ticker))
+                        if observed is None:
+                            failed.append(f"{discovery_ticker}: insufficient adjusted daily price history")
+                        else:
+                            scanned.append({"ticker":discovery_ticker,
+                                            "momentum":observed["momentum"],
+                                            "recovery":observed["recovery"],
+                                            "date":observed["date"]})
+                    except Exception:
+                        failed.append(f"{discovery_ticker}: quote data unavailable")
+            st.session_state["sector_discovery_snapshot"]={
+                "sector":sector_choice,"rows":scanned,"errors":failed,
+                "scanned_at":datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            }
+        snapshot=st.session_state.get("sector_discovery_snapshot",{})
+        if snapshot.get("sector")==sector_choice:
+            st.caption(f"Scan requested: {snapshot.get('scanned_at','unknown time')} · "
+                       "Scores use the latest daily adjusted-close date shown for each stock.")
+            for failure in snapshot.get("errors",[]):
+                st.warning(failure)
+            all_rows=snapshot.get("rows",[])
+            if all_rows:
+                discovery_weight=st.session_state.get("simple_hybrid_pct",60)
+                discovery_table=sector_discovery_engine.rank_sector(
+                    all_rows,discovery_weight,rank_choice)
+                dates={row["date"] for row in all_rows}
+                if len(dates)>1:
+                    st.warning("Some stocks have different latest data dates; these rankings are not fully synchronized.")
+                st.caption(f"Showing {len(all_rows)} of {len(representatives)} curated representatives · "
+                           f"Custom Hybrid = {discovery_weight}% Momentum / {100-discovery_weight}% Recovery")
+                st.dataframe(discovery_table,hide_index=True,use_container_width=True)
+                best_ticker=discovery_table.iloc[0]["Ticker"]
+                st.caption(f"Highest {rank_choice} score in this scanned sample: {best_ticker}. "
+                           "This is NOT a claim that it is the best investment in the sector.")
+                st.download_button("Download sector scores CSV",
+                                   data=discovery_table.to_csv(index=False).encode("utf-8"),
+                                   file_name="adaptive_alpha_sector_scores.csv",mime="text/csv",
+                                   key="discovery_export")
+            else:
+                st.info("No eligible stock scores were retrieved. Try scanning again.")
         else:
-            st.info("Click Refresh watchlist scores to load the latest available technical readings.")
-    else:
-        st.info("No stocks saved yet. Analyze a ticker above and choose Save to watchlist.")
-    st.caption("Watchlists remain in Streamlit session memory only; they may disappear after refresh, disconnect, or app restart. No cross-device sync.")
+            st.info("Choose a sector and select Scan selected sector to load its scores.")
+        st.caption("Moving the Hybrid slider re-ranks cached results. Use Scan selected sector again to refresh vendor prices. "
+                   "Sector assignments are illustrative and can change; no buy/sell forecast is implied.")
+    with watch_tab:
+        st.subheader("My watchlist")
+        st.caption("Save up to 12 stock symbols for this browser session. No account or permanent storage.")
+        if "simple_watchlist" not in st.session_state:
+            st.session_state.simple_watchlist=[]
+        if "watchlist_snapshots" not in st.session_state:
+            st.session_state.watchlist_snapshots={}
+        current_ticker=st.session_state.get("simple_current_ticker","NVDA")
+        if re.fullmatch(r"[A-Z][A-Z0-9.-]{0,11}",current_ticker):
+            if st.button(f"Save {current_ticker} to watchlist",key="watchlist_add_current"):
+                try:
+                    st.session_state.simple_watchlist=watchlist_engine.add_ticker(
+                        st.session_state.simple_watchlist,current_ticker)
+                except ValueError as exc:
+                    st.warning(str(exc))
+        if st.session_state.simple_watchlist:
+            st.caption(f"{len(st.session_state.simple_watchlist)} / {watchlist_engine.MAX_WATCHLIST} saved")
+            for saved_ticker in list(st.session_state.simple_watchlist):
+                label_col,open_col,remove_col=st.columns([4,1,1],vertical_alignment="center")
+                label_col.write(f"**{saved_ticker}**")
+                open_col.button("View",key=f"watch_view_{saved_ticker}",use_container_width=True,
+                                on_click=lambda t=saved_ticker: st.session_state.update(
+                                    simple_current_ticker=t,simple_ticker_input=t))
+                if remove_col.button("Remove",key=f"watch_remove_{saved_ticker}",use_container_width=True):
+                    st.session_state.simple_watchlist=watchlist_engine.remove_ticker(
+                        st.session_state.simple_watchlist,saved_ticker)
+                    st.session_state.watchlist_snapshots.pop(saved_ticker,None)
+                    st.rerun()
+            if st.button("Refresh watchlist scores",type="primary"):
+                snapshots={}
+                errors=[]
+                with st.spinner("Checking saved stocks with the market-data provider..."):
+                    for t in st.session_state.simple_watchlist:
+                        try:
+                            h=recent_daily_signal_history(t)
+                            z=compute_strategy_signals(h)
+                            if z is None:
+                                errors.append(f"{t}: not enough valid daily closes")
+                            else:
+                                snapshots[t]={"ticker":t,"momentum":z["momentum"],
+                                              "recovery":z["recovery"],"date":z["date"]}
+                        except Exception:
+                            errors.append(f"{t}: vendor market data unavailable")
+                st.session_state.watchlist_snapshots=snapshots
+                st.session_state.watchlist_errors=errors
+            for problem in st.session_state.get("watchlist_errors",[]):
+                st.warning(problem)
+            saved_rows=[st.session_state.watchlist_snapshots[t]
+                        for t in st.session_state.simple_watchlist
+                        if t in st.session_state.watchlist_snapshots]
+            if saved_rows:
+                weight=st.session_state.get("simple_hybrid_pct",60)
+                frame=[]
+                for record in saved_rows:
+                    m=float(record["momentum"])
+                    r=float(record["recovery"])
+                    frame.append({
+                        "Ticker":record["ticker"],
+                        "Momentum":round(m,1),
+                        "Recovery":round(r,1),
+                        "Standard Hybrid":round(signal_engine.weighted_hybrid(m,r,0.6),1),
+                        "Custom Hybrid":round(signal_engine.weighted_hybrid(m,r,weight/100),1),
+                        "As of":record["date"],
+                    })
+                watch_df=pd.DataFrame(frame).sort_values(
+                    ["Custom Hybrid","Ticker"],ascending=[False,True]).reset_index(drop=True)
+                st.dataframe(watch_df,hide_index=True,use_container_width=True)
+                st.caption(f"Custom Hybrid uses the current {weight}% Momentum / {100-weight}% Recovery weights. "
+                           "Saved scores update only when you click Refresh; changing the slider changes the blend, not prices.")
+                st.download_button("Download watchlist CSV",data=watch_df.to_csv(index=False).encode("utf-8"),
+                                   file_name="adaptive_alpha_session_watchlist.csv",mime="text/csv")
+            else:
+                st.info("Click Refresh watchlist scores to load the latest available technical readings.")
+        else:
+            st.info("No stocks saved yet. Analyze a ticker above and choose Save to watchlist.")
+        st.caption("Watchlists remain in Streamlit session memory only; they may disappear after refresh, disconnect, or app restart. No cross-device sync.")
 
     st.caption("Adaptive Alpha · Research beta · Not investment advice. Advanced tools are in the sidebar.")
 
