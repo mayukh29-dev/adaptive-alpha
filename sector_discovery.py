@@ -85,3 +85,41 @@ def sector_leaders(tables: dict[str, pd.DataFrame], sort_by: str) -> pd.DataFram
                          "Scored":len(table), "Coverage":len(SECTOR_UNIVERSE[sector]),
                          "As of":first["As of"]})
     return pd.DataFrame(rows)
+
+def sector_scorecard(tables: dict[str, pd.DataFrame], sort_by: str) -> pd.DataFrame:
+    """Equally weighted cross-sectional mean of scored representatives per sector.
+
+    Unavailable tickers do NOT get zero scores; coverage is disclosed.
+    Averages are descriptive technical readings, NOT sector index returns.
+    """
+    if sort_by not in SORT_CHOICES:
+        raise ValueError("Invalid ranking approach")
+    rows = []
+    for sector in SECTOR_UNIVERSE:
+        table = tables.get(sector)
+        valid = table is not None and not table.empty
+        row = {
+            "Sector": sector,
+            "Scored": len(table) if valid else 0,
+            "Coverage": len(SECTOR_UNIVERSE[sector]),
+            "Avg Momentum": round(float(table["Momentum"].mean()), 2) if valid else None,
+            "Avg Recovery": round(float(table["Recovery"].mean()), 2) if valid else None,
+            "Avg Standard Hybrid": round(float(table["Standard Hybrid"].mean()), 2) if valid else None,
+            "Avg Custom Hybrid": round(float(table["Custom Hybrid"].mean()), 2) if valid else None,
+        }
+        rows.append(row)
+    result = pd.DataFrame(rows)
+    selected = {
+        "Momentum": "Avg Momentum",
+        "Recovery": "Avg Recovery",
+        "Standard Hybrid": "Avg Standard Hybrid",
+        "Custom Hybrid": "Avg Custom Hybrid",
+    }[sort_by]
+    result = result.sort_values(
+        [selected, "Sector"], ascending=[False, True], na_position="last",
+        kind="stable").reset_index(drop=True)
+    result.insert(0, "Rank", [
+        i + 1 if pd.notna(v) else None
+        for i, v in enumerate(result[selected])
+    ])
+    return result
