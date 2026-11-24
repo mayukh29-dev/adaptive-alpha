@@ -10,6 +10,7 @@ import signals as signal_engine
 import comparison as comparison_engine
 import score_history as score_history_engine
 import watchlist as watchlist_engine
+import sector_discovery as sector_discovery_engine
 import prediction as prediction_engine
 
 st.set_page_config(page_title="Adaptive Alpha | Research Terminal", page_icon="📈", layout="wide")
@@ -381,6 +382,67 @@ if page=="Stock Scores":
                            file_name="adaptive_alpha_comparison.csv",mime="text/csv")
     elif compared:
         st.info("At least two stocks need valid prices to display a comparison.")
+
+    st.divider()
+    st.subheader("Discover stocks by sector")
+    st.caption("Explore a small, curated sample of US-listed stocks in each sector. This is not a complete market scan or a verified current sector-membership database.")
+    sector_options=list(sector_discovery_engine.SECTOR_UNIVERSE)
+    sector_choice=st.selectbox("Choose a sector",sector_options,key="discovery_sector")
+    rank_choice=st.selectbox("Rank by",list(sector_discovery_engine.SORT_CHOICES),
+                              key="discovery_rank",help="Custom Hybrid uses the Momentum/Recovery slider above.")
+    representatives=sector_discovery_engine.SECTOR_UNIVERSE[sector_choice]
+    st.caption("Representative tickers: "+", ".join(representatives))
+    st.caption("Stock coverage is fixed and deliberately limited to six representatives per sector to control data requests.")
+    if st.button("Scan selected sector",type="primary",key="discovery_scan"):
+        scanned=[]
+        failed=[]
+        with st.spinner(f"Scoring available stocks in {sector_choice}..."):
+            for discovery_ticker in representatives:
+                try:
+                    observed=compute_strategy_signals(recent_daily_signal_history(discovery_ticker))
+                    if observed is None:
+                        failed.append(f"{discovery_ticker}: insufficient adjusted daily price history")
+                    else:
+                        scanned.append({"ticker":discovery_ticker,
+                                        "momentum":observed["momentum"],
+                                        "recovery":observed["recovery"],
+                                        "date":observed["date"]})
+                except Exception:
+                    failed.append(f"{discovery_ticker}: quote data unavailable")
+        st.session_state["sector_discovery_snapshot"]={
+            "sector":sector_choice,"rows":scanned,"errors":failed,
+            "scanned_at":datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        }
+    snapshot=st.session_state.get("sector_discovery_snapshot",{})
+    if snapshot.get("sector")==sector_choice:
+        st.caption(f"Scan requested: {snapshot.get('scanned_at','unknown time')} · "
+                   "Scores use the latest daily adjusted-close date shown for each stock.")
+        for failure in snapshot.get("errors",[]):
+            st.warning(failure)
+        all_rows=snapshot.get("rows",[])
+        if all_rows:
+            discovery_weight=st.session_state.get("simple_hybrid_pct",60)
+            discovery_table=sector_discovery_engine.rank_sector(
+                all_rows,discovery_weight,rank_choice)
+            dates={row["date"] for row in all_rows}
+            if len(dates)>1:
+                st.warning("Some stocks have different latest data dates; these rankings are not fully synchronized.")
+            st.caption(f"Showing {len(all_rows)} of {len(representatives)} curated representatives · "
+                       f"Custom Hybrid = {discovery_weight}% Momentum / {100-discovery_weight}% Recovery")
+            st.dataframe(discovery_table,hide_index=True,use_container_width=True)
+            best_ticker=discovery_table.iloc[0]["Ticker"]
+            st.caption(f"Highest {rank_choice} score in this scanned sample: {best_ticker}. "
+                       "This is NOT a claim that it is the best investment in the sector.")
+            st.download_button("Download sector scores CSV",
+                               data=discovery_table.to_csv(index=False).encode("utf-8"),
+                               file_name="adaptive_alpha_sector_scores.csv",mime="text/csv",
+                               key="discovery_export")
+        else:
+            st.info("No eligible stock scores were retrieved. Try scanning again.")
+    else:
+        st.info("Choose a sector and select Scan selected sector to load its scores.")
+    st.caption("Moving the Hybrid slider re-ranks cached results. Use Scan selected sector again to refresh vendor prices. "
+               "Sector assignments are illustrative and can change; no buy/sell forecast is implied.")
 
     st.divider()
     st.subheader("My watchlist")
