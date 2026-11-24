@@ -48,3 +48,17 @@ def latest_scores(history):
                 volatility_63=float(daily.iloc[-63:].std()*np.sqrt(252)*100),
                 drawdown_126=float(dd.min()*100), date=str(p.index[-1].date()),
                 close=float(p.iloc[-1]), version=SIGNAL_VERSION)
+
+def weighted_hybrid(momentum: float, recovery: float, momentum_weight: float = 0.6) -> float:
+    """Display-only user blend; NOT an evaluated ML forecast.
+
+    momentum_weight is a fraction in [0, 1].  The research baseline is 0.6.
+    """
+    import math
+    vals = (float(momentum), float(recovery), float(momentum_weight))
+    if not all(math.isfinite(x) for x in vals):
+        raise ValueError("Momentum, Recovery, and weight must be finite")
+    m, r, w = vals
+    if not (0 <= m <= 100 and 0 <= r <= 100 and 0 <= w <= 1):
+        raise ValueError("Scores must be 0–100 and weight must be 0–1")
+    return w * m + (1 - w) * r
