@@ -39,6 +39,26 @@ class SignalConsistency(unittest.TestCase):
         self.assertTrue(r.isna().all().all())
         self.assertTrue(h.isna().all().all())
 
+    def test_custom_hybrid_weights(self):
+        self.assertAlmostEqual(signals.weighted_hybrid(80, 40, 0.0), 40)
+        self.assertAlmostEqual(signals.weighted_hybrid(80, 40, 1.0), 80)
+        self.assertAlmostEqual(signals.weighted_hybrid(80, 40, 0.6), 64)
+        self.assertAlmostEqual(signals.weighted_hybrid(80, 40, 0.25), 50)
+
+    def test_custom_hybrid_rejects_bad_weights(self):
+        for weight in (-0.1, 1.1, float("nan")):
+            with self.assertRaises(ValueError):
+                signals.weighted_hybrid(80, 40, weight)
+
+    def test_custom_hybrid_leaves_standard_scores_unchanged(self):
+        latest=signals.latest_scores(pd.DataFrame({"Close":self.close}))
+        self.assertAlmostEqual(
+            signals.weighted_hybrid(latest["momentum"],latest["recovery"],0.6),
+            latest["hybrid"],places=10)
+        signals.weighted_hybrid(latest["momentum"],latest["recovery"],0.2)
+        self.assertAlmostEqual(latest["hybrid"],
+            0.6*latest["momentum"] + 0.4*latest["recovery"],places=10)
+
     def test_pure_models_dimension(self):
         rows = np.array([[20,50],[50,50],[80,30]],dtype=float)
         for name in prediction.FEATURES:
