@@ -55,3 +55,33 @@ def rank_sector(rows: list[dict], momentum_pct: int, sort_by: str) -> pd.DataFra
     ).reset_index(drop=True)
     frame.insert(0, "Rank", range(1, len(frame)+1))
     return frame[columns]
+
+def all_sector_tables(rows_by_sector: dict[str, list[dict]], momentum_pct: int,
+                      sort_by: str) -> dict[str, pd.DataFrame]:
+    """Display every sector independently; preserve even sectors with no valid scores."""
+    if not isinstance(rows_by_sector, dict):
+        raise ValueError("Expected grouped sector rows")
+    return {
+        sector: rank_sector(rows_by_sector.get(sector, []), momentum_pct, sort_by)
+        for sector in SECTOR_UNIVERSE
+    }
+
+
+def sector_leaders(tables: dict[str, pd.DataFrame], sort_by: str) -> pd.DataFrame:
+    """One row per scanned sector, with explicit empty/missing status."""
+    if sort_by not in SORT_CHOICES:
+        raise ValueError("Invalid ranking approach")
+    rows = []
+    for sector in SECTOR_UNIVERSE:
+        table = tables.get(sector)
+        if table is None or table.empty:
+            rows.append({"Sector":sector, "Leader":"Unavailable", "Leader score":None,
+                         "Scored":0, "Coverage":len(SECTOR_UNIVERSE[sector]),
+                         "As of":"Unavailable"})
+        else:
+            first=table.iloc[0]
+            rows.append({"Sector":sector, "Leader":first["Ticker"],
+                         "Leader score":round(float(first[sort_by]),2),
+                         "Scored":len(table), "Coverage":len(SECTOR_UNIVERSE[sector]),
+                         "As of":first["As of"]})
+    return pd.DataFrame(rows)
