@@ -454,6 +454,26 @@ if page=="Stock Scores":
             st.caption(f"Custom Hybrid = {weight}% Momentum + {100-weight}% Recovery. "
                        "Changing the slider updates all displayed sector rankings without refetching.")
             if all_sectors:
+                st.markdown("#### Sector scorecard")
+                st.caption("Average of available representative stock scores in each sector. Equal weight per scored stock; not an index return or investment ranking.")
+                scorecard=sector_discovery_engine.sector_scorecard(tables,rank_choice)
+                scorecard_metric={
+                    "Momentum":"Avg Momentum",
+                    "Recovery":"Avg Recovery",
+                    "Standard Hybrid":"Avg Standard Hybrid",
+                    "Custom Hybrid":"Avg Custom Hybrid"
+                }[rank_choice]
+                available_card=scorecard.dropna(subset=[scorecard_metric])
+                if not available_card.empty:
+                    st.bar_chart(available_card.set_index("Sector")[[scorecard_metric]],
+                                 horizontal=True,height=390,x_label="Average technical score (0–100)")
+                st.dataframe(scorecard,hide_index=True,use_container_width=True)
+                if (scorecard["Scored"]<scorecard["Coverage"]).any():
+                    st.warning("Some sectors have incomplete data coverage; their averages use only the stocks successfully scored.")
+                st.download_button("Download sector scorecard CSV",
+                    data=scorecard.to_csv(index=False).encode("utf-8"),
+                    file_name="adaptive_alpha_sector_scorecard.csv",mime="text/csv",
+                    key="discovery_scorecard_export")
                 st.markdown("#### Sector leaders at a glance")
                 leaders=sector_discovery_engine.sector_leaders(tables,rank_choice)
                 st.dataframe(leaders,hide_index=True,use_container_width=True)
