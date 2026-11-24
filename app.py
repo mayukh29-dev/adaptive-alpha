@@ -235,6 +235,7 @@ if page=="Stock Scores":
         left,right=st.columns([4,1],vertical_alignment="bottom")
         with left:
             requested=st.text_input("Stock ticker",value=st.session_state.get("simple_current_ticker","NVDA"),
+                                    key="simple_ticker_input",
                                     help="Enter a US-listed ticker, for example NVDA, AAPL, MSFT or SPY.")
         with right:
             submitted=st.form_submit_button("Analyze",type="primary",use_container_width=True)
@@ -401,9 +402,9 @@ if page=="Stock Scores":
         for saved_ticker in list(st.session_state.simple_watchlist):
             label_col,open_col,remove_col=st.columns([4,1,1],vertical_alignment="center")
             label_col.write(f"**{saved_ticker}**")
-            if open_col.button("View",key=f"watch_view_{saved_ticker}",use_container_width=True):
-                st.session_state.simple_current_ticker=saved_ticker
-                st.rerun()
+            open_col.button("View",key=f"watch_view_{saved_ticker}",use_container_width=True,
+                            on_click=lambda t=saved_ticker: st.session_state.update(
+                                simple_current_ticker=t,simple_ticker_input=t))
             if remove_col.button("Remove",key=f"watch_remove_{saved_ticker}",use_container_width=True):
                 st.session_state.simple_watchlist=watchlist_engine.remove_ticker(
                     st.session_state.simple_watchlist,saved_ticker)
