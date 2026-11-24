@@ -273,9 +273,8 @@ if page=="Stock Scores":
             x,y=st.columns([2,1],vertical_alignment="center")
             x.metric("Your custom Hybrid",f"{personal_h:.1f} / 100")
             with y:
-                if st.button("Reset to 60/40",use_container_width=True):
-                    st.session_state.simple_hybrid_pct=60
-                    st.rerun()
+                st.button("Reset to 60/40",use_container_width=True,
+                          on_click=lambda: st.session_state.update(simple_hybrid_pct=60))
             st.progress(personal_h/100.0)
             if w==60:
                 st.caption("Your custom score matches the standard 60/40 Hybrid.")
