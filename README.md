@@ -8,6 +8,10 @@ The app opens by default to a single-stock research screen. Enter a ticker to se
 
 The homepage now includes **historical score trends** (1, 3, 6, or 12 calendar months) from the same daily adjusted close signals used in the current score cards. Changing the user Hybrid weight updates its entire historical custom-score line, while the baseline 60/40 line stays fixed. Users can download chart data as CSV. A score chart is not a return backtest and cannot validate customized strategy performance.\n\nThe homepage also supports **side-by-side comparison of 2–3 stocks**. Enter comma-separated tickers, click **Compare stocks**, and see each stock's Momentum, Recovery, original 60/40 Hybrid, and user-weighted Hybrid scores. The same custom-weight slider reranks comparisons without refetching market data; results can be exported as CSV. Market scores for each ticker show the adjusted-close date, and differing dates are flagged. Comparison ranks are descriptive, not predicted returns.
 
+### Session watchlists
+
+Visitors can save up to **12 tickers per Streamlit browser session** on the home page. Use **Save to watchlist** to add the selected ticker, **View** to switch the analysis ticker, **Remove** to delete it, and **Refresh watchlist scores** to fetch recent adjusted-close scores for saved tickers. The table ranks the saved symbols by the current custom Hybrid mix and supports CSV export. This is session memory only: no login, persistent storage, cross-device sync, or price alerts. Watchlist scores are refreshed only on request; moving the weight slider recomputes the blend without downloading quotes.
+
 Use the sidebar **Advanced research** toggle for the original historical views, market data, watchlists and company research tools. Daily adjusted signals require 127 valid closes.
 
 ## Features
