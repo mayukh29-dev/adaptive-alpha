@@ -31,6 +31,26 @@ class SectorDiscoveryTests(unittest.TestCase):
         ranked=sector_discovery.rank_sector(rows,60,"Momentum")
         self.assertEqual(ranked.iloc[0]["Ticker"],"BBB")
 
+    def test_all_sector_tables_and_leaders(self):
+        groups = {
+            "Information Technology": [
+                {"ticker":"AAA","momentum":90,"recovery":20,"date":"2026-11-24"},
+                {"ticker":"BBB","momentum":30,"recovery":95,"date":"2026-11-24"},
+            ],
+            "Financials": [
+                {"ticker":"CCC","momentum":60,"recovery":75,"date":"2026-11-24"},
+            ],
+        }
+        momentum=sector_discovery.all_sector_tables(groups,100,"Custom Hybrid")
+        recovery=sector_discovery.all_sector_tables(groups,0,"Custom Hybrid")
+        self.assertEqual(len(momentum),11)
+        self.assertEqual(momentum["Information Technology"].iloc[0]["Ticker"],"AAA")
+        self.assertEqual(recovery["Information Technology"].iloc[0]["Ticker"],"BBB")
+        leaders=sector_discovery.sector_leaders(momentum,"Custom Hybrid")
+        self.assertEqual(len(leaders),11)
+        self.assertEqual(leaders.loc[leaders.Sector=="Financials","Leader"].iloc[0],"CCC")
+        self.assertEqual(leaders.loc[leaders.Sector=="Energy","Leader"].iloc[0],"Unavailable")
+
     def test_empty_and_invalid_options(self):
         self.assertTrue(sector_discovery.rank_sector([],60,"Momentum").empty)
         with self.assertRaises(ValueError):
