@@ -20,6 +20,10 @@ Visitors can save up to **12 tickers per Streamlit browser session** on the home
 
 Use the sidebar **Advanced research** toggle for the original historical views, market data, watchlists and company research tools. Daily adjusted signals require 127 valid closes.
 
+## Homepage navigation refresh
+
+The default screen keeps the ticker search, Momentum and Recovery readings, fixed 60/40 Hybrid, and adjustable Custom Hybrid in view. Historical score trends and adjusted-close prices sit in a collapsed **Score history and price chart** expander. Below the main stock analysis, three tabs group secondary workflows: **Compare stocks**, **Discover by sector**, and **My watchlist**. These are presentation changes only: the standard score definitions, custom slider, manually curated sector sample, session-only watchlist and research limitations are unchanged. Advanced research remains accessible through the sidebar toggle.
+
 ## Features
 
 - Strategy overview with historic Adaptive Alpha vs SPY results.
