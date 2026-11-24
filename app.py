@@ -25,9 +25,14 @@ RANDOM={"simulations":1000,"beaten":73.1,"median_cagr":15.3015,"p05_cagr":10.609
         "equal_stock_cagr":31.723,"equal_stock_vol":77.64,"equal_sector_cagr":31.578,"equal_sector_vol":75.637}
 CAVEAT = "Historical price-only proxy on a later-selected 109-stock universe, not a production Adaptive Alpha V7 signal replay. Survivorship/selection bias, possible price-data anomalies, and execution limitations remain. Not investment advice."
 st.sidebar.markdown("## ◈ ADAPTIVE ALPHA")
-page=st.sidebar.radio("Navigation",["Overview","Live Market","Strategy Explorer","Predictive Watchlist","Strategy benchmarks","Stock research agent","Methodology"])
-st.sidebar.caption("BETA • Historical data through 2026-11-13")
-st.sidebar.warning("Research prototype. Historical returns have not passed the final price audit.")
+st.sidebar.caption("Stock research beta · adjusted daily closes")
+advanced_mode=st.sidebar.toggle("Advanced research",value=False,help="Show technical research tools and unaudited historical comparisons.")
+if advanced_mode:
+    page=st.sidebar.radio("Navigation",["Stock Scores","Overview","Live Market","Strategy Explorer",
+        "Predictive Watchlist","Strategy benchmarks","Stock research agent","Methodology"])
+    st.sidebar.warning("Historical research returns are unaudited and not independently predictive.")
+else:
+    page="Stock Scores"
 
 @st.cache_data(ttl=900,show_spinner=False)
 def load_stock(ticker):
@@ -218,7 +223,82 @@ def market_live_panel(symbol, period, interval):
     except Exception:
         st.warning("Quote service temporarily unavailable. The rest of the dashboard remains usable.")
 
-if page=="Overview":
+if page=="Stock Scores":
+    st.title("Adaptive Alpha")
+    st.caption("Understand a stock in three scores. Customize the blend that matters to you.")
+    st.info("Technical research scores from adjusted daily closing prices — not probabilities, price targets, or Buy/Sell recommendations.")
+
+    with st.form("simple_ticker_search", border=False):
+        left,right=st.columns([4,1],vertical_alignment="bottom")
+        with left:
+            requested=st.text_input("Stock ticker",value=st.session_state.get("simple_current_ticker","NVDA"),
+                                    help="Enter a US-listed ticker, for example NVDA, AAPL, MSFT or SPY.")
+        with right:
+            submitted=st.form_submit_button("Analyze",type="primary",use_container_width=True)
+    symbol=requested.strip().upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,11}",symbol):
+        st.warning("Enter a valid ticker such as AAPL or NVDA.")
+    else:
+        st.session_state["simple_current_ticker"]=symbol
+        try:
+            history=recent_daily_signal_history(symbol)
+            scores=compute_strategy_signals(history)
+        except Exception:
+            scores=None
+            st.warning("Could not retrieve valid daily market data. Please retry later.")
+        if scores is None:
+            st.info("Scores require at least 127 valid adjusted daily closes. This stock may be too new or vendor history may be unavailable.")
+        else:
+            m=float(scores["momentum"])
+            r=float(scores["recovery"])
+            default_h=float(scores["hybrid"])
+            st.subheader(symbol)
+            st.caption(f"Daily adjusted price through {scores['date']} · Source: Yahoo Finance via yfinance · Not an intraday quote")
+            st.markdown("#### Strategy scores")
+            a,b,c=st.columns(3)
+            a.metric("Momentum",f"{m:.1f} / 100",help="Based on the stock's return over the previous 63 trading sessions.")
+            b.metric("Recovery",f"{r:.1f} / 100",help="Combines rebound from a 126-session low and closeness to the 126-session high.")
+            c.metric("Standard Hybrid",f"{default_h:.1f} / 100",help="Fixed research formula: 60% Momentum and 40% Recovery.")
+
+            st.divider()
+            st.subheader("Customize your Hybrid score")
+            st.caption("Adjust the mix below. Momentum and Recovery stay the same; only your custom Hybrid changes.")
+            if "simple_hybrid_pct" not in st.session_state:
+                st.session_state.simple_hybrid_pct=60
+            st.slider("Momentum weight",min_value=0,max_value=100,step=5,
+                      key="simple_hybrid_pct",help="Recovery automatically receives the remaining percentage.")
+            w=st.session_state.simple_hybrid_pct
+            st.write(f"**Momentum {w}%** + **Recovery {100-w}%**")
+            personal_h=signal_engine.weighted_hybrid(m,r,w/100.0)
+            x,y=st.columns([2,1],vertical_alignment="center")
+            x.metric("Your custom Hybrid",f"{personal_h:.1f} / 100")
+            with y:
+                if st.button("Reset to 60/40",use_container_width=True):
+                    st.session_state.simple_hybrid_pct=60
+                    st.rerun()
+            st.progress(personal_h/100.0)
+            if w==60:
+                st.caption("Your custom score matches the standard 60/40 Hybrid.")
+            else:
+                st.caption(f"Your custom score differs from the standard Hybrid by {personal_h-default_h:+.1f} points.")
+            st.warning("Custom weights are for exploration only. Their historical returns and predictive accuracy have not been backtested or validated.")
+            with st.expander("How are these scores calculated?"):
+                st.markdown("""
+**Momentum:** The stock's 63-session return is mapped onto a 0–100 technical score.
+
+**Recovery:** 60% rebound from the trailing 126-session low, plus 40% proximity to the trailing 126-session high. Each underlying component is bounded at 100.
+
+**Standard Hybrid:** 60% Momentum + 40% Recovery. This is the reference formula used by the shared price-only scoring engine.
+
+**Custom Hybrid:** Your chosen Momentum percentage times Momentum, plus the remainder times Recovery.
+
+**What scores do not mean:** A score of 80 is not an 80% chance the stock will rise. Scores do not include business fundamentals, fair value, or complete investment risks.
+""")
+            with st.expander("Recent adjusted closing prices"):
+                st.line_chart(history["Close"].dropna().tail(126),height=240)
+    st.caption("Adaptive Alpha · Research beta · Not investment advice. Advanced tools are in the sidebar.")
+
+elif page=="Overview":
     st.title("Adaptive Alpha")
     st.caption("QUANTITATIVE MARKET INTELLIGENCE • INTERACTIVE BETA")
     st.info(CAVEAT)
