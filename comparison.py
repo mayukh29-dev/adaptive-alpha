@@ -15,7 +15,7 @@ def parse_comparison_tickers(raw: str, max_tickers: int = 3) -> list[str]:
     unique = list(dict.fromkeys(items))
     if len(unique) < 2 or len(unique) > max_tickers:
         raise ValueError(f"Enter between 2 and {max_tickers} distinct stock tickers.")
-    if any(not re.fullmatch(r"[A-Z][A-Z0-9.\\-]{0,11}", t) for t in unique):
+    if any(not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,11}", t) for t in unique):
         raise ValueError("Invalid ticker. Use letters, numbers, periods, or hyphens.")
     return unique
 
